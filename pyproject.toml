@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,8 @@ name = "oot-rando"
 version = "0.5.1"
 description = "Randomizer for the Ocarina of Time remake (RomFS mods for Hookshot / emulator)"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "src/oot_rando/logic/world/LICENSE-archipelago-oot.txt"]
 requires-python = ">=3.11"
 dependencies = ["zstandard>=0.23,<1", "evfl>=1.3,<2", "ainb==0.2.17"]
 
@@ -21,4 +23,4 @@ oot-rando = "oot_rando.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-oot_rando = ["logic/world/*.json", "logic/world/*.txt", "logic/world/regions/*.json"]
+oot_rando = ["logic/world/*.json", "logic/world/*.txt", "logic/world/regions/*.json", "resources/ingame_tracker/*"]
