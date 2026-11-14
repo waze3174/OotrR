@@ -5,7 +5,9 @@ by a small interpreter of the events the converter and the mailbox write).
 """
 import _src_path  # noqa: F401  (src on sys.path)
 import copy
+import json
 import os
+import tempfile
 import unittest
 from collections import Counter
 
@@ -351,6 +353,25 @@ class WithGame(unittest.TestCase):
                                            added, current)
         self.assertEqual(rows[flow_name(resource)], ['ActionGuide'])
         self.assertIn(['GetPouchContent'], rows.values())     # the rows already listing ActionGuide
+
+
+@unittest.skipUnless(NUP, 'OOT_NUP not set')
+class TrackerTests(unittest.TestCase):
+    def test_tokens_are_not_levels_and_level_flags_stay_tracked(self):
+        from pathlib import Path
+        from oot_rando.logic import rando_options
+        from oot_rando.patching.soul_adapter import murmur3
+        from oot_rando.randomizer.randomizer_core import Settings, generate
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'seed'
+            generate(NUP, output, Settings('tracker-tokens', randomize_chests=False, full=rando_options.defaults()))
+            inventory = json.loads((output / 'tracking.json').read_text(encoding='utf-8'))['inventory']
+        token_flags = {str(murmur3(progressive.got_flag(progressive.token_actor(family, number))))
+                       for family, levels in PROGRESSIVE.items() for number in range(1, len(levels) + 1)}
+        self.assertEqual([rule for rule in inventory if rule['hash'] in token_flags], [])
+        for family, levels in PROGRESSIVE.items():
+            counted = {rule['count'] for rule in inventory if rule['item'] == family}
+            self.assertEqual(counted, set(range(1, len(levels) + 1)), family)
 
 
 if __name__ == '__main__':
