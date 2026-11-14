@@ -24,7 +24,8 @@ visibility. It has no IPS patch and takes no game offset beyond the GameData one
 
 ## The seed file
 
-`content:/RandoTracker/seed.trk` ([docs/ingame-tracker-format.md](../../docs/ingame-tracker-format.md)): the seed's markers, the flags to watch by region, the items' flags, the dungeons' key flags.
+`content:/RandoTracker/seed.trk` ([docs/ingame-tracker-format.md](../../docs/ingame-tracker-format.md)): the seed's markers, the flags to watch by region with each check's name, the items' flags, the dungeons' key flags.
+Version 2 files name the checks; version 1 files (seeds made by the 0.1.0 exporter) are read too, and their checks are shown as "Check N".
 It is read once, on the game thread, 10 s after the first frame, and again at a press of the combination if that first read found
 nothing (at most every 2 s). If it is missing or damaged (`trkfile.c` checks every offset and count) the module stays idle: the
 combination does nothing and the game sees every button. The bytes are kept for good, because the panel's names point into them.
@@ -65,15 +66,30 @@ A key the game doesn't have is `GD_UNKNOWN`, never false: an unknown check isn't
 - the save is of this seed when the seed marker reads true, and of another when it reads false.
 
 `app.c` calls it twice a second while the panel is open (never while it is closed) on the game's controller thread, then publishes the
-result (`overlay.c`, a sequence lock) to the present thread.
+result (`overlay.c`, a sequence lock) to the present thread. With a region's list open, `tracker_check_rows` reads the flags of the
+checks shown (at most `BROWSE_CHECK_ROWS`, 18) into the panel. A move of the highlight publishes the panel again at once, with only
+those rows read anew: the rest waits for the next refresh, so scrolling costs a few flag reads, not the whole seed's.
 
 ## Controls
 
 `controls.c`. A frame is counted from the controller reads (`poll.c`): the first controller the game reads is the anchor, a read of it
 8 ms after the last starts a frame, and the buttons held during the frame that ended are the frame's input. R + right stick up
-(`BTN_R`, `BTN_RS_UP`, bit 21) toggles on its press, B closes. While the panel is open or the combination is held, every state the game
-reads has R and the right stick's four direction bits cleared (and B, with the panel open) and the right stick's axes centred
-(`app_edit_state`). Nothing is hidden until the seed file has loaded. R + right stick down is sloperinaGZ's menu, R3 + D-pad is ocarinaMIDI's.
+(`BTN_R`, `BTN_RS_UP`, bit 21) toggles on its press. With the panel open, B (on its press) goes back or closes, A opens the
+highlighted region's list, and the D-pad or the left stick's direction bits move the highlight: on the press, then after 350 ms every
+90 ms while held. One command a frame, in that order (the combination, B, A, a direction).
+
+While the panel is open, every state the game reads has R, the right stick's direction bits, A, B, the D-pad and the left stick's direction
+bits cleared, and both sticks' axes centred (`app_edit_state`); while the combination is held with the panel closed, R and the right
+stick. When the panel closes, those of them still held stay hidden (and a stick still pushed stays centred) until they are let go for a
+frame, so the B that closed the panel doesn't reach the game. Nothing is hidden until the seed file has loaded. R + right stick down is
+sloperinaGZ's menu, R3 + D-pad is ocarinaMIDI's.
+
+## Browsing
+
+`browse.c` is pure: the highlighted region, and with its list open the highlighted check and the first one shown. The regions are drawn in
+three columns filled top to bottom: up and down step through them in that order, left and right jump a column (to the last region of a
+shorter last column). In a list, up and down step one check and left and right a page, and the list scrolls to keep the highlight shown.
+B goes back to the regions, and B there closes the panel. Opening the panel shows the regions again, with the highlight where it was.
 
 ## Drawing
 
@@ -81,25 +97,62 @@ reads has R and the right stick's four direction bits cleared (and B, with the p
 RomFS through `gamefile.c` the first time the panel is opened (a pause), rasterised with stb_truetype into a glyph atlas, and one draw
 per quad (a glyph or a rectangle), blended over the picture just before the game's present, with no read-back. The sizes are
 sloperinaGZ's: a font pixel is a 360th of the picture's height, so the panel scales with the resolution (560 font pixels wide: 1,680 pixels
-at 1080p, 1,120 at 720p). Top to bottom: title and seed id; status lines (not this seed's save, goal reached); the items, 4 rows of 9 (owned:
-lit in the item's colour, with its level; missing and unknown: dim); the dungeons' keys; the checks' total and the souls; the regions in
-three columns, each `collected/trackable` (green when all, dim when none).
+at 1080p, 1,120 at 720p). Top to bottom: title and seed id; status lines (not this seed's save, goal reached); the items, 4 rows of 9, as
+their icons (below) or else their letters (owned: lit in the item's colour, with its level; missing and unknown: dim); the dungeons' keys; the checks' total and the souls; the regions in
+three columns, each `collected/trackable` (green when all, dim when none), the highlighted one on a gold band; a line of hints. With a
+region's list open, the grid and the regions give way to the region's name, its count and which checks are shown, then up to 18 checks:
+a filled green box and a green name when collected, an empty white box and a white name when missing, a dim question mark when the game
+doesn't have the flag.
 
 Quad budget: ocarinaMIDI draws at most 512 quads (a short list). This panel's text is about 1,000 quads at most (35 regions, 36 cells), so
 `MAX_QUADS` in `gpuui.c` is 1,536, the command memory per slot (`overlay.c`) 0x40000 (sloperinaGZ's own size) and the elements 2 x 1,536 x
-256 bytes. Over the budget the rest of the frame is left out, with a log line, not a crash.
+256 bytes. Over the budget the rest of the frame is left out, with a log line, not a crash. The icons add at most 60 quads (36 cells and
+three per dungeon in the keys row, which then draws fewer letters), and shrinking a picture has its own 36 elements per slot.
+
+## The items' icons
+
+`content:/RandoTracker/icons.bin` ([docs/ingame-tracker-format.md](../../docs/ingame-tracker-format.md)), which the randomizer writes on the
+player's PC from their own game: for each item of the grid, the game's picture as its BNTX stores it (ASTC 4x4 blocks in the GPU's
+block-linear layout) and the BNTX's description of that layout. Nothing is decoded on either side: the module gives the bytes to NVN as an
+ASTC 4x4 texture with that packaged layout (`nvnTextureBuilderSetPackagedTextureLayout`), as sloperinaGZ's `gpuui.c` (`make_images`,
+master 5287f64) makes textures of the game's controller pictures; sloperinaGZ decodes its icons on the CPU instead (`astc.c`). They are
+sampled as unorm whatever the BNTX says, as sloperinaGZ's `gameimage.c` does: no sRGB decode, like everything else the panel draws.
+
+The pictures are large (up to 704 KB each, about 7.3 MB for the 38) and the game's heap has little to spare (sloperinaGZ's NATIVE_UI.md and
+FINDINGS.md: it refused allocations past about 10 to 11 MB), so they are not kept. Each is shrunk once, on the GPU, into a 64-pixel slot
+of an icon atlas (512 x 320, 40 slots, RGBA16F: 1.25 MiB, kept; the 38 icons of the game of 13/11 use 38), and only one picture's bytes
+are held at a time (688 KiB at most, freed once they are in):
+
+1. The first frame the panel is drawn (`trackerui.c`, `icons_start`), the file's header and index are read and checked (`iconfile.c`), the
+   grid's cells are matched with its entries by name, and `gpuui_icons_init` makes the atlas (registered after the glyph atlas) and room
+   for the largest picture.
+2. Then one picture every other frame the panel is drawn (frame slot 0, so the GPU is done with the last one): its bytes are read by offset
+   into that memory, NVN makes a texture of them, and the frame's commands draw it into its slot before the panel. Each atlas pixel is the
+   mean of up to 6 x 6 filtered samples, their premultiplied colours added up by blending, so a 683-pixel picture doesn't alias at a tenth
+   of its size. The cell shows its icon from that frame on, its letters until then.
+3. Once all are in, the picture memory is freed (log: `the icons are in; the pictures' N KiB go back`).
+
+A cell's icon is a square as tall as the cell, in its middle, drawn with premultiplied blending: at full strength when the item is owned,
+dimmed when it is missing, fainter still when it is unknown (the game has none of its flags), which also gets a small `?` at the cell's
+right. The stones and medallions use the file select's pictures (`DataFileImportantIcon_00` to `_08`). In the keys row each temple is
+labelled by its medallion's icon (Bottom of the Well, Gerudo Training Ground and Ganon's Castle, which have none, keep their letters),
+then the small key's icon and `found/total`, then the boss key's icon, dimmed until it is held; without the icons, the letters and a `B`
+as before. The atlas is a render target, so its rows run the window's way up: with the lower-left origin it is
+sampled upside down, as sloperinaGZ samples its layer.
 
 ## Failure modes
 
 Each is logged once and leaves the game alone: no `seed.trk` or a damaged one (idle); an unknown build (the panel opens and says so);
 no save data yet (the panel says "Waiting for the game's save data"); the game's font or shader can't be read, or the GPU side can't start
-(no panel; the controls still work); the GPU not finishing a frame's drawing for 5 s (the panel gives up).
+(no panel; the controls still work); the GPU not finishing a frame's drawing for 5 s (the panel gives up); no `icons.bin`, a damaged one,
+an NVN without the functions the icons need, or no memory for them (the items show as their letters); a picture that can't be read or
+that NVN won't take (that item shows as its letters).
 
 ## Known limits
 
 - Nothing was tested in the game when this was written (TESTING.md has the plan).
-- Only ASCII is drawn (other characters show as `?`); region names are ASCII in the seeds so far.
+- Only ASCII is drawn (other characters show as `?`, one per byte); region and check names are ASCII in full-randomizer seeds (the
+  Kokiri-only mode's "Four-chest house" checks have an em dash).
 - The panel is drawn at the present, over everything, the game's pause screen included.
 - "In logic" (what can be reached now) is not shown: it needs the randomizer's Python logic sweep.
-- Item icons: v1 draws text and coloured boxes. The icons are the game's own (`UI/Tex/Icon/*.bntx.zs`); sloperinaGZ's `gameimage.c` and
-  `astc.c` read them.
+- The icons need the player's game when the seed is made, or `update-tracker --nup`: a seed without `icons.bin` shows the items' letters.

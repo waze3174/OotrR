@@ -1,5 +1,5 @@
 /* The module's logic on the PC, for tests/test_module.py: the seed file's parser, the tracker's state, the game-data
- * reader over a fake GameData in memory, and the controls. `module_host --list` names the tests; `module_host NAME
+ * reader over a fake GameData in memory, the controls, the browsing and the icons file's index. `module_host --list` names the tests; `module_host NAME
  * [FIXTURE]` runs one (FIXTURE: a seed file for the tests that read one) and exits 0 if it passes. */
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdint.h>
@@ -7,9 +7,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../src/browse.h"
 #include "../src/controls.h"
 #include "../src/gamedata.h"
 #include "../src/grid.h"
+#include "../src/iconfile.h"
 #include "../src/npad.h"
 #include "../src/text.h"
 #include "../src/tracker.h"
@@ -51,8 +53,11 @@ enum { SEED_MARKER = 4000, GOAL_MARKER = 5000, BOOL_A = 100, BOOL_B = 200, BOW_L
        WELL_FOUND = 31, WELL_HELD = 32 };
 #define BOOL64_KEY 0x1111222233334444ull
 
-/* Two regions (2 and 1 checks), four items, two dungeons with keys; the strings come first. */
-static blob_t synthetic(void)
+static const char *const check_names[3] = { "Mido's House Chest", "Kokiri Sword Chest", "Deku Tree Map Chest" };
+
+/* Two regions (2 and 1 checks), four items, two dungeons with keys; the strings come first. Version 1 has no
+ * check names. */
+static blob_t synthetic_of_version(int version)
 {
   blob_t blob = { { 0 }, 0 };
   strings_t strings = { { 0 }, 1 };
@@ -61,12 +66,15 @@ static blob_t synthetic(void)
   uint32_t bow = add_string(&strings, "Bow"), boomerang = add_string(&strings, "Boomerang");
   uint32_t ghoul = add_string(&strings, "Soul (Ghoul)"), bat = add_string(&strings, "Soul (Bat)");
   uint32_t forest_temple = add_string(&strings, "Forest Temple"), well = add_string(&strings, "Bottom of the Well");
+  uint32_t names[3] = { 0, 0, 0 };
+  for (int i = 0; version >= 2 && i < 3; i++)
+    names[i] = add_string(&strings, check_names[i]);
   uint32_t strings_padded = (strings.size + 3) & ~3u;
   uint32_t regions_at = HEADER_BYTES + strings_padded, checks_at = regions_at + 2 * 12, items_at = checks_at + 3 * 16;
   uint32_t rules_at = items_at + 4 * 8, keys_at = rules_at + 5 * 8, size = keys_at + 2 * 24;
   uint8_t *b = blob.bytes;
   memcpy(b, "RTRK", 4);
-  put16(b + 4, 1);
+  put16(b + 4, (uint32_t)version);
   put16(b + 6, HEADER_BYTES);
   put32(b + 8, size);
   put32(b + 12, SEED_MARKER);
@@ -87,6 +95,8 @@ static blob_t synthetic(void)
   put64(b + checks_at, BOOL_A); put32(b + checks_at + 8, TRK_KIND_BOOL);
   put64(b + checks_at + 16, BOOL64_KEY); put32(b + checks_at + 24, TRK_KIND_BOOL64);
   put64(b + checks_at + 32, BOOL_B); put32(b + checks_at + 40, TRK_KIND_BOOL);
+  for (int i = 0; i < 3; i++)
+    put32(b + checks_at + i * 16 + 12, names[i]);
   uint32_t items[4][3] = { { bow, 0, 2 }, { boomerang, 2, 1 }, { ghoul, 3, 1 }, { bat, 4, 1 } };
   for (int i = 0; i < 4; i++) {
     put32(b + items_at + i * 8, items[i][0]);
@@ -111,6 +121,11 @@ static blob_t synthetic(void)
   return blob;
 }
 
+static blob_t synthetic(void)
+{
+  return synthetic_of_version(TRK_VERSION);
+}
+
 static bool parses(const blob_t *blob)
 {
   trk_t trk;
@@ -133,6 +148,7 @@ static int test_parse_reads_every_table(void)
   CHECK(!strcmp(trk_string(&trk, deku.name), "Deku Tree") && deku.first_check == 2 && deku.check_count == 1);
   trk_check_t check = trk_check(&trk, 1);
   CHECK(check.key == BOOL64_KEY && check.kind == TRK_KIND_BOOL64);
+  CHECK(trk.version == 2 && !strcmp(trk_string(&trk, check.name), "Kokiri Sword Chest"));
   trk_item_t bow = trk_item(&trk, 0);
   CHECK(bow.rule_count == 2 && trk_rule(&trk, 1).hash == BOW_L2 && trk_rule(&trk, 1).level == 2);
   trk_keys_t well = trk_keys(&trk, 1);
@@ -145,7 +161,8 @@ static int test_parse_reads_every_table(void)
 static int test_parse_refuses_damage(void)
 {
   struct { const char *what; size_t at; uint32_t value; int bytes; } damage[] = {
-    { "magic", 0, 0x58585858, 4 },       { "version", 4, 2, 2 },        { "header size", 6, 64, 2 },
+    { "magic", 0, 0x58585858, 4 },       { "version", 4, 3, 2 },        { "header size", 6, 64, 2 },
+    { "version 0", 4, 0, 2 },
     { "file size", 8, 100, 4 },          { "strings outside", 24, 100000, 4 },
     { "strings size", 28, 100000, 4 },   { "regions outside", 32, 100000, 4 },
     { "region count", 36, 5000, 4 },     { "checks outside", 40, 100000, 4 },
@@ -180,6 +197,29 @@ static int test_parse_refuses_a_row_leaving_its_table(void)
   return 0;
 }
 
+static int test_parse_reads_version_1_without_names(void)
+{
+  blob_t blob = synthetic_of_version(1);
+  trk_t trk;
+  const char *why = "";
+  CHECK(trk_parse(&trk, blob.bytes, blob.size, &why));
+  CHECK(trk.version == 1 && trk.check_count == 3);
+  for (uint32_t i = 0; i < trk.check_count; i++)
+    CHECK(trk_check(&trk, i).name == 0 && !strcmp(trk_string(&trk, trk_check(&trk, i).name), ""));
+  return 0;
+}
+
+static int test_parse_refuses_a_name_outside_the_strings(void)
+{
+  blob_t blob = synthetic();
+  trk_t trk;
+  const char *why = "";
+  CHECK(trk_parse(&trk, blob.bytes, blob.size, &why));
+  put32(blob.bytes + trk.checks_at + 2 * 16 + 12, trk.strings_size); /* one past the table */
+  CHECK(!parses(&blob));
+  return 0;
+}
+
 static int test_parse_refuses_truncation_and_an_unterminated_string(void)
 {
   blob_t blob = synthetic();
@@ -206,6 +246,7 @@ static int test_the_real_seed_file(const char *path)
   CHECK(trk.region_count == 35 && trk.check_count == 840 && trk.item_count == 44);
   CHECK(trk.seed_marker == 1220450581u && trk.goal_marker == 3488204275u);
   CHECK(!strcmp(trk_string(&trk, trk.seed_id), "76069ecc4740cec6"));
+  CHECK(trk.version == 1 && trk_check(&trk, 839).name == 0); /* made by the 0.1.0 exporter: no names */
   return 0;
 }
 
@@ -350,6 +391,30 @@ static int test_a_key_ring_counts_every_key(void)
   tracker_state_t state;
   tracker_compute(&trk, &fake.source, &state);
   CHECK(state.keys[0].small_keys_known && state.keys[0].found == 5 && state.keys[0].total == 5);
+  return 0;
+}
+
+static int test_a_regions_checks_by_name_and_state(void)
+{
+  blob_t blob = synthetic();
+  trk_t trk;
+  const char *why = "";
+  CHECK(trk_parse(&trk, blob.bytes, blob.size, &why));
+  fake_flags_t fake = fake_with(GD_UNKNOWN);
+  set_bool(&fake, BOOL_A, GD_TRUE);
+  set_bool(&fake, BOOL_B, GD_FALSE);
+  check_row_t rows[4];
+  CHECK(tracker_check_rows(&trk, &fake.source, 0, 0, rows, 4) == 2);
+  CHECK(!strcmp(rows[0].name, check_names[0]) && rows[0].number == 1 && rows[0].flag == GD_TRUE);
+  CHECK(!strcmp(rows[1].name, check_names[1]) && rows[1].number == 2 && rows[1].flag == GD_UNKNOWN); /* bool64, not set */
+  CHECK(tracker_check_rows(&trk, &fake.source, 1, 0, rows, 4) == 1);
+  CHECK(!strcmp(rows[0].name, check_names[2]) && rows[0].flag == GD_FALSE);
+  CHECK(tracker_check_rows(&trk, &fake.source, 0, 1, rows, 1) == 1 && rows[0].number == 2); /* from the second, room for one */
+  CHECK(tracker_check_rows(&trk, &fake.source, 0, 5, rows, 4) == 0);
+  CHECK(tracker_check_rows(&trk, &fake.source, 2, 0, rows, 4) == 0); /* no such region */
+  blob = synthetic_of_version(1);
+  CHECK(trk_parse(&trk, blob.bytes, blob.size, &why));
+  CHECK(tracker_check_rows(&trk, &fake.source, 0, 0, rows, 4) == 2 && !strcmp(rows[1].name, "") && rows[1].number == 2);
   return 0;
 }
 
@@ -602,40 +667,155 @@ static int test_moving_data_is_followed_by_the_next_attach(void)
 static int test_the_combo_toggles_on_its_press_only(void)
 {
   controls_reset();
-  CHECK(controls_frame(0, false) == CONTROL_NONE);
-  CHECK(controls_frame(BTN_R, false) == CONTROL_NONE);
-  CHECK(controls_frame(BTN_R | BTN_RS_UP, false) == CONTROL_TOGGLE);
-  CHECK(controls_frame(BTN_R | BTN_RS_UP, true) == CONTROL_NONE); /* held: no second toggle */
-  CHECK(controls_frame(0, true) == CONTROL_NONE);
-  CHECK(controls_frame(BTN_RS_UP, true) == CONTROL_NONE);
-  CHECK(controls_frame(BTN_RS_UP | BTN_R, true) == CONTROL_TOGGLE); /* the other order */
-  CHECK(controls_frame(BTN_R | BTN_RS_DOWN, false) == CONTROL_NONE); /* sloperinaGZ's menu */
-  CHECK(controls_frame(BTN_R | BTN_DUP, false) == CONTROL_NONE);
+  CHECK(controls_frame(0, false, 0) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_R, false, 0) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_R | BTN_RS_UP, false, 0) == CONTROL_TOGGLE);
+  CHECK(controls_frame(BTN_R | BTN_RS_UP, true, 0) == CONTROL_NONE); /* held: no second toggle */
+  CHECK(controls_frame(0, true, 0) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_RS_UP, true, 0) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_RS_UP | BTN_R, true, 0) == CONTROL_TOGGLE); /* the other order */
+  CHECK(controls_frame(BTN_R | BTN_RS_DOWN, false, 0) == CONTROL_NONE); /* sloperinaGZ's menu */
+  CHECK(controls_frame(BTN_R | BTN_DUP, false, 0) == CONTROL_NONE);
   return 0;
 }
 
-static int test_b_closes_only_an_open_panel(void)
+static int test_a_and_b_and_directions_only_with_the_panel_open(void)
 {
   controls_reset();
-  CHECK(controls_frame(BTN_B, false) == CONTROL_NONE);
-  CHECK(controls_frame(0, true) == CONTROL_NONE);
-  CHECK(controls_frame(BTN_B, true) == CONTROL_CLOSE);
-  CHECK(controls_frame(BTN_B, true) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_B, false, 0) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_A, false, 0) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_DDOWN, false, 0) == CONTROL_NONE);
+  CHECK(controls_frame(0, true, 0) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_B, true, 0) == CONTROL_BACK);
+  CHECK(controls_frame(BTN_B, true, 0) == CONTROL_NONE); /* on the press only */
+  CHECK(controls_frame(BTN_A, true, 0) == CONTROL_SELECT);
+  CHECK(controls_frame(BTN_A | BTN_B, true, 0) == CONTROL_BACK); /* B pressed while A is held */
+  CHECK(controls_frame(0, true, 0) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_DLEFT, true, 0) == CONTROL_LEFT);
+  CHECK(controls_frame(BTN_LS_RIGHT, true, 10) == CONTROL_RIGHT); /* the left stick as a D-pad */
+  CHECK(controls_frame(BTN_LS_UP, true, 20) == CONTROL_UP);
+  CHECK(controls_frame(BTN_DDOWN, true, 30) == CONTROL_DOWN);
+  return 0;
+}
+
+static int test_a_held_direction_repeats(void)
+{
+  controls_reset();
+  CHECK(controls_frame(BTN_DDOWN, true, 1000) == CONTROL_DOWN);
+  CHECK(controls_frame(BTN_DDOWN, true, 1033) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_DDOWN, true, 1349) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_DDOWN, true, 1350) == CONTROL_DOWN); /* after the delay, */
+  CHECK(controls_frame(BTN_DDOWN, true, 1400) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_DDOWN, true, 1440) == CONTROL_DOWN); /* then more often */
+  CHECK(controls_frame(BTN_DUP, true, 1450) == CONTROL_UP);     /* another direction: at once */
+  CHECK(controls_frame(0, true, 1460) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_DUP, true, 1470) == CONTROL_UP);     /* let go and pressed again */
+  CHECK(controls_frame(BTN_DUP, false, 2000) == CONTROL_NONE);  /* closed: nothing */
+  CHECK(controls_frame(BTN_DUP, true, 2010) == CONTROL_UP);     /* open again: a fresh press */
   return 0;
 }
 
 static int test_what_the_game_does_not_see(void)
 {
+  controls_reset();
   uint32_t combo = BTN_R | BTN_RS_UP | BTN_A;
-  CHECK(controls_hidden(BTN_A | BTN_B | BTN_R, false) == 0);
-  CHECK(!controls_centres_stick(BTN_RS_UP, false));
-  CHECK(controls_centres_stick(combo, false));
+  CHECK(controls_hidden(BTN_A | BTN_B | BTN_R | BTN_DUP, false) == 0);
+  CHECK(!controls_centres_right_stick(BTN_RS_UP, false) && !controls_centres_left_stick(false));
+  CHECK(controls_centres_right_stick(combo, false));
   uint32_t hidden = controls_hidden(combo, false);
   CHECK((hidden & BTN_R) && (hidden & BTN_RS_UP) && (hidden & BTN_RS_LEFT) && (hidden & BTN_RS_DOWN));
   CHECK(!(hidden & BTN_B) && !(hidden & BTN_A) && !(hidden & BTN_RSTICK));
-  hidden = controls_hidden(BTN_A, true);
-  CHECK((hidden & BTN_B) && (hidden & BTN_R) && !(hidden & BTN_A));
-  CHECK(controls_centres_stick(0, true));
+  hidden = controls_hidden(0, true);
+  CHECK((hidden & BTN_B) && (hidden & BTN_R) && (hidden & BTN_A) && (hidden & BTN_DPAD) == BTN_DPAD);
+  CHECK((hidden & BTN_LS_LEFT) && (hidden & BTN_LS_DOWN) && !(hidden & BTN_X) && !(hidden & BTN_ZL));
+  CHECK(controls_centres_right_stick(0, true) && controls_centres_left_stick(true));
+  return 0;
+}
+
+static int test_buttons_held_at_closing_stay_hidden_until_let_go(void)
+{
+  controls_reset();
+  CHECK(controls_frame(0, true, 0) == CONTROL_NONE);
+  CHECK(controls_frame(BTN_B | BTN_LS_LEFT | BTN_X, true, 10) == CONTROL_BACK);
+  controls_hold_back_held(); /* B closed the panel */
+  uint32_t hidden = controls_hidden(BTN_B | BTN_LS_LEFT | BTN_X, false);
+  CHECK((hidden & BTN_B) && (hidden & BTN_LS_LEFT) && !(hidden & BTN_X)); /* X never was the panel's */
+  CHECK(controls_centres_left_stick(false));
+  CHECK(controls_frame(BTN_B, false, 20) == CONTROL_NONE); /* the stick let go, B still held */
+  CHECK((controls_hidden(BTN_B, false) & BTN_B) && !controls_centres_left_stick(false));
+  CHECK(controls_frame(0, false, 30) == CONTROL_NONE);
+  CHECK(controls_hidden(BTN_B, false) == 0); /* a new press of B is the game's */
+  return 0;
+}
+
+/* --- browsing --------------------------------------------------------------------------------- */
+
+static int test_the_highlight_moves_over_the_regions_columns(void)
+{
+  /* 35 regions in 3 columns of 12: 0-11, 12-23, 24-34 */
+  browse_t b = { BROWSE_REGIONS, 0, 0, 0 };
+  CHECK(browse_region_rows(35) == 12 && browse_region_rows(36) == 12 && browse_region_rows(1) == 1);
+  browse_move(&b, NAV_UP, 35, 0);
+  CHECK(b.region == 0); /* the first stays */
+  browse_move(&b, NAV_LEFT, 35, 0);
+  CHECK(b.region == 0);
+  browse_move(&b, NAV_DOWN, 35, 0);
+  CHECK(b.region == 1);
+  browse_move(&b, NAV_RIGHT, 35, 0);
+  CHECK(b.region == 13);
+  browse_move(&b, NAV_RIGHT, 35, 0);
+  CHECK(b.region == 25);
+  browse_move(&b, NAV_RIGHT, 35, 0);
+  CHECK(b.region == 25); /* no fourth column */
+  browse_move(&b, NAV_LEFT, 35, 0);
+  CHECK(b.region == 13);
+  b.region = 11;
+  browse_move(&b, NAV_DOWN, 35, 0);
+  CHECK(b.region == 12); /* down from a column's foot: the next column's head */
+  b.region = 23;
+  browse_move(&b, NAV_RIGHT, 35, 0);
+  CHECK(b.region == 34); /* the shorter last column: its last region */
+  browse_move(&b, NAV_DOWN, 35, 0);
+  CHECK(b.region == 34);
+  browse_move(&b, NAV_DOWN, 0, 0); /* no regions: nothing moves */
+  CHECK(b.region == 34);
+  browse_show_regions(&b, 20); /* fewer regions than the highlight: kept inside */
+  CHECK(b.view == BROWSE_REGIONS && b.region == 19);
+  return 0;
+}
+
+static int test_a_list_opens_scrolls_and_goes_back(void)
+{
+  browse_t b = { BROWSE_REGIONS, 4, 7, 3 };
+  browse_open(&b, 3);
+  CHECK(b.view == BROWSE_REGIONS); /* the highlight is past the regions */
+  b.region = 2;
+  browse_open(&b, 3);
+  CHECK(b.view == BROWSE_CHECKS && b.region == 2 && b.check == 0 && b.top == 0);
+  uint32_t count = 40;
+  browse_move(&b, NAV_UP, 3, count);
+  CHECK(b.check == 0 && b.top == 0);
+  for (int i = 0; i < BROWSE_CHECK_ROWS - 1; i++)
+    browse_move(&b, NAV_DOWN, 3, count);
+  CHECK(b.check == BROWSE_CHECK_ROWS - 1 && b.top == 0); /* the last row shown */
+  browse_move(&b, NAV_DOWN, 3, count);
+  CHECK(b.check == BROWSE_CHECK_ROWS && b.top == 1); /* scrolled by one */
+  browse_move(&b, NAV_RIGHT, 3, count);
+  CHECK(b.check == 2 * BROWSE_CHECK_ROWS && b.top == BROWSE_CHECK_ROWS + 1);
+  browse_move(&b, NAV_RIGHT, 3, count);
+  CHECK(b.check == count - 1 && b.top == count - BROWSE_CHECK_ROWS); /* a page past the end: the last */
+  browse_move(&b, NAV_DOWN, 3, count);
+  CHECK(b.check == count - 1);
+  browse_move(&b, NAV_LEFT, 3, count);
+  CHECK(b.check == count - 1 - BROWSE_CHECK_ROWS && b.top == b.check);
+  browse_move(&b, NAV_LEFT, 3, count);
+  browse_move(&b, NAV_LEFT, 3, count);
+  CHECK(b.check == 0 && b.top == 0);
+  CHECK(browse_back(&b) && b.view == BROWSE_REGIONS && b.region == 2);
+  CHECK(!browse_back(&b)); /* B at the regions: the panel closes */
+  browse_open(&b, 3);
+  browse_move(&b, NAV_DOWN, 3, 0); /* an empty list */
+  CHECK(b.check == 0 && b.top == 0);
   return 0;
 }
 
@@ -657,6 +837,14 @@ static int test_grid_names_and_labels(void)
   CHECK(!strcmp(abbr, "De"));
   grid_dungeon_abbr("", abbr);
   CHECK(!strcmp(abbr, ""));
+  const char *temples[] = { "Forest Temple", "Fire Temple", "Water Temple", "Shadow Temple", "Spirit Temple" };
+  for (unsigned i = 0; i < sizeof(temples) / sizeof(*temples); i++) {
+    const char *medallion = grid_dungeon_medallion(temples[i]);
+    CHECK(medallion && grid_index_of(medallion) >= 0 && !strncmp(medallion, temples[i], strlen(medallion) - 9));
+  }
+  CHECK(!strcmp(grid_dungeon_medallion("Shadow Temple"), "Shadow Medallion"));
+  CHECK(!grid_dungeon_medallion("Bottom of the Well") && !grid_dungeon_medallion("Gerudo Training Ground"));
+  CHECK(!grid_dungeon_medallion("Ganon's Castle") && !grid_dungeon_medallion("Deku Tree"));
   return 0;
 }
 
@@ -671,6 +859,140 @@ static int test_text_helpers(void)
   return 0;
 }
 
+/* --- the icons file's index ------------------------------------------------------------------- */
+
+#define ICONS_BYTES 4288 /* a 64 x 64 bow (4096 bytes) and an 8 x 4 hookshot (32), after the header and 2 entries */
+
+static uint8_t icons[ICONS_BYTES];
+
+static void put_icon(int i, const char *name, uint32_t width, uint32_t height, uint32_t offset, uint32_t size)
+{
+  uint8_t *e = icons + ICONFILE_HEADER + i * ICONFILE_ENTRY;
+  memset(e, 0, ICONFILE_ENTRY);
+  memcpy(e, name, strlen(name));
+  put32(e + 32, width);
+  put32(e + 36, height);
+  put32(e + 40, offset);
+  put32(e + 44, size);
+  for (int b = 0; b < 8; b++)
+    e[48 + b] = (uint8_t)(b == 0 ? 4 : 0);
+  e[56] = 2, e[57] = 3, e[58] = 4, e[59] = 5;
+  put32(e + 60, i ? 0x2D06 : 0x2D01);
+}
+
+static void synthetic_icons(void)
+{
+  memset(icons, 0, sizeof(icons));
+  memcpy(icons, "RTIC", 4);
+  put16(icons + 4, ICONFILE_VERSION);
+  put16(icons + 6, ICONFILE_HEADER);
+  put32(icons + 8, ICONS_BYTES);
+  put32(icons + 12, 2);
+  put32(icons + 16, ICONFILE_HEADER);
+  put32(icons + 20, ICONFILE_ENTRY);
+  put32(icons + 24, ICONFILE_HEADER + 2 * ICONFILE_ENTRY);
+  put_icon(0, "Bow", 64, 64, 160, 4096);
+  put_icon(1, "Hookshot", 8, 4, 4256, 32);
+}
+
+static bool icons_parse(icon_index_t *index, size_t size)
+{
+  const char *why = "";
+  return iconfile_parse(index, icons, size, ICONS_BYTES, &why);
+}
+
+static int test_icons_index_reads_every_entry(void)
+{
+  icon_index_t index;
+  synthetic_icons();
+  CHECK(icons_parse(&index, sizeof(icons)));
+  CHECK(index.count == 2 && index.largest == 4096);
+  const icon_entry_t *bow = &index.entries[0], *hookshot = &index.entries[1];
+  CHECK(!strcmp(bow->name, "Bow") && bow->width == 64 && bow->height == 64 && bow->offset == 160 && bow->size == 4096);
+  CHECK(bow->format == 0x2D01 && bow->layout[0] == 4 && bow->swizzle[0] == 2 && bow->swizzle[3] == 5);
+  CHECK(!strcmp(hookshot->name, "Hookshot") && hookshot->format == 0x2D06 && hookshot->offset == 4256);
+  CHECK(icons_parse(&index, ICONFILE_HEADER + 2 * ICONFILE_ENTRY)); /* the head is enough */
+  return 0;
+}
+
+static int test_icons_index_refuses_damage(void)
+{
+  struct { const char *what; size_t at; uint32_t value; int bytes; } damage[] = {
+    { "magic", 0, 0x58585858, 4 },        { "version", 4, 2, 2 },               { "header size", 6, 64, 2 },
+    { "file size", 8, 100, 4 },           { "count 0", 12, 0, 4 },              { "count 41", 12, ICONFILE_MAX + 1, 4 },
+    { "index place", 16, 64, 4 },         { "entry size", 20, 48, 4 },          { "data place", 24, 176, 4 },
+    { "reserved", 28, 1, 4 },             { "an empty name", 32, 0, 1 },        { "width 0", 64, 0, 4 },
+    { "width 5000", 64, 5000, 4 },        { "height 0", 68, 0, 4 },             { "a misaligned offset", 72, 168, 4 },
+    { "an offset in the index", 72, 144, 4 }, { "a size under its blocks", 76, 4080, 4 },
+    { "a size over 4 MiB", 76, (4u << 20) + 16, 4 }, { "a swizzle", 88, 6, 1 }, { "the format", 92, 0x2D02, 4 },
+    { "a picture past the end", 136, 4272, 4 },
+  };
+  icon_index_t index;
+  for (unsigned i = 0; i < sizeof(damage) / sizeof(*damage); i++) {
+    synthetic_icons();
+    if (damage[i].bytes == 4)
+      put32(icons + damage[i].at, damage[i].value);
+    else if (damage[i].bytes == 2)
+      put16(icons + damage[i].at, damage[i].value);
+    else
+      icons[damage[i].at] = (uint8_t)damage[i].value;
+    if (icons_parse(&index, sizeof(icons))) {
+      snprintf(failure, sizeof(failure), "a damaged %s was accepted", damage[i].what);
+      return 1;
+    }
+  }
+  synthetic_icons();
+  memset(icons + ICONFILE_HEADER, 'A', ICONFILE_NAME); /* a name without its NUL */
+  CHECK(!icons_parse(&index, sizeof(icons)));
+  synthetic_icons();
+  put_icon(1, "Bow", 8, 4, 4256, 32); /* two icons of one item */
+  CHECK(!icons_parse(&index, sizeof(icons)));
+  synthetic_icons();
+  CHECK(!icons_parse(&index, ICONFILE_HEADER + ICONFILE_ENTRY) && !icons_parse(&index, ICONFILE_HEADER - 1));
+  const char *why = "";
+  CHECK(!iconfile_parse(&index, icons, sizeof(icons), ICONS_BYTES + 16, &why) && why[0]);
+  return 0;
+}
+
+/* a file of ICONFILE_MAX (or one more) 4 x 4 pictures, one block each: the atlas's every slot */
+static int test_icons_index_fills_the_atlas(void)
+{
+  enum { MOST = ICONFILE_MAX + 1, DATA_AT = ICONFILE_HEADER + MOST * ICONFILE_ENTRY };
+  static uint8_t file[DATA_AT + MOST * 16];
+  for (int count = ICONFILE_MAX; count <= MOST; count++) {
+    uint32_t data_at = ICONFILE_HEADER + count * ICONFILE_ENTRY, size = data_at + count * 16;
+    memset(file, 0, sizeof(file));
+    memcpy(file, "RTIC", 4);
+    put16(file + 4, ICONFILE_VERSION);
+    put16(file + 6, ICONFILE_HEADER);
+    put32(file + 8, size);
+    put32(file + 12, (uint32_t)count);
+    put32(file + 16, ICONFILE_HEADER);
+    put32(file + 20, ICONFILE_ENTRY);
+    put32(file + 24, data_at);
+    for (int i = 0; i < count; i++) {
+      uint8_t *e = file + ICONFILE_HEADER + i * ICONFILE_ENTRY;
+      snprintf((char *)e, ICONFILE_NAME, "Icon %d", i);
+      put32(e + 32, 4);
+      put32(e + 36, 4);
+      put32(e + 40, data_at + (uint32_t)i * 16);
+      put32(e + 44, 16);
+      e[48] = 4;
+      e[56] = 2, e[57] = 3, e[58] = 4, e[59] = 5;
+      put32(e + 60, 0x2D06);
+    }
+    icon_index_t index;
+    const char *why = "";
+    bool read = iconfile_parse(&index, file, size, size, &why);
+    CHECK(read == (count <= ICONFILE_MAX));
+    char last[ICONFILE_NAME];
+    snprintf(last, sizeof(last), "Icon %d", ICONFILE_MAX - 1);
+    if (read)
+      CHECK(index.count == ICONFILE_MAX && !strcmp(index.entries[ICONFILE_MAX - 1].name, last));
+  }
+  return 0;
+}
+
 /* --- driver ----------------------------------------------------------------------------------- */
 
 typedef struct { const char *name; int (*run)(void); int (*run_with_file)(const char *); } test_t;
@@ -680,11 +1002,14 @@ static const test_t tests[] = {
   { "parse_refuses_damage", test_parse_refuses_damage, 0 },
   { "parse_refuses_a_row_leaving_its_table", test_parse_refuses_a_row_leaving_its_table, 0 },
   { "parse_refuses_truncation_and_an_unterminated_string", test_parse_refuses_truncation_and_an_unterminated_string, 0 },
+  { "parse_reads_version_1_without_names", test_parse_reads_version_1_without_names, 0 },
+  { "parse_refuses_a_name_outside_the_strings", test_parse_refuses_a_name_outside_the_strings, 0 },
   { "the_real_seed_file", 0, test_the_real_seed_file },
   { "state_of_a_save", test_state_of_a_save, 0 },
   { "state_when_the_game_knows_nothing", test_state_when_the_game_knows_nothing, 0 },
   { "a_save_of_another_seed_and_the_goal", test_a_save_of_another_seed_and_the_goal, 0 },
   { "a_key_ring_counts_every_key", test_a_key_ring_counts_every_key, 0 },
+  { "a_regions_checks_by_name_and_state", test_a_regions_checks_by_name_and_state, 0 },
   { "the_real_seed_with_every_flag_set", 0, test_the_real_seed_with_every_flag_set },
   { "reads_bools_and_ints", test_reads_bools_and_ints, 0 },
   { "bool64_head_and_appended_tail", test_bool64_head_and_appended_tail, 0 },
@@ -695,10 +1020,17 @@ static const test_t tests[] = {
   { "the_bool_entry_is_recognised_by_its_vtable", test_the_bool_entry_is_recognised_by_its_vtable, 0 },
   { "moving_data_is_followed_by_the_next_attach", test_moving_data_is_followed_by_the_next_attach, 0 },
   { "the_combo_toggles_on_its_press_only", test_the_combo_toggles_on_its_press_only, 0 },
-  { "b_closes_only_an_open_panel", test_b_closes_only_an_open_panel, 0 },
+  { "a_and_b_and_directions_only_with_the_panel_open", test_a_and_b_and_directions_only_with_the_panel_open, 0 },
+  { "a_held_direction_repeats", test_a_held_direction_repeats, 0 },
   { "what_the_game_does_not_see", test_what_the_game_does_not_see, 0 },
+  { "buttons_held_at_closing_stay_hidden_until_let_go", test_buttons_held_at_closing_stay_hidden_until_let_go, 0 },
+  { "the_highlight_moves_over_the_regions_columns", test_the_highlight_moves_over_the_regions_columns, 0 },
+  { "a_list_opens_scrolls_and_goes_back", test_a_list_opens_scrolls_and_goes_back, 0 },
   { "grid_names_and_labels", test_grid_names_and_labels, 0 },
   { "text_helpers", test_text_helpers, 0 },
+  { "icons_index_reads_every_entry", test_icons_index_reads_every_entry, 0 },
+  { "icons_index_refuses_damage", test_icons_index_refuses_damage, 0 },
+  { "icons_index_fills_the_atlas", test_icons_index_fills_the_atlas, 0 },
 };
 
 int main(int argc, char **argv)
