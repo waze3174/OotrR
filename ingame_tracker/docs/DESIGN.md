@@ -142,7 +142,8 @@ right. The stones and medallions use the file select's pictures (`DataFileImport
 melody list's (`OcarinaMelodyIcon_00` to `_11` of the same archive: 107 pixels, ASTC 4x4 sRGB, swizzled to grey with an alpha channel, so they
 are drawn white on the song's coloured cell), numbered as the game's melody scores list the songs (Zelda's Lullaby first,
 Epona's, Saria's, Sun's, Time, Storms, then the six warp songs; the 13th, `_12`, is the scarecrow's, unused). That the numbering is the
-melody list's is read from the game's data (13 buttons for 12 scores and the scarecrow), not yet seen in the game. In the keys row each temple is
+melody list's was checked by decoding the 13 pictures on the PC with the emulator's ASTC decoder (a horse, a sun, storm clouds, a tree, a
+flame, a water drop and a scarecrow are 01, 03, 05, 06, 07, 08 and 12); it is not yet seen in the game. In the keys row each temple is
 labelled by its medallion's icon (Bottom of the Well, Gerudo Training Ground and Ganon's Castle, which have none, keep their letters),
 then the small key's icon and `found/total`, then the boss key's icon, dimmed until it is held; without the icons, the letters and a `B`
 as before. The atlas is a render target, so its rows run the window's way up: with the lower-left origin it is

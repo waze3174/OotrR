@@ -415,6 +415,12 @@ class IconTests(unittest.TestCase):
         self.assertEqual(icons[at + 12:], ingame_icons.KEY_ICONS)
         self.assertLessEqual(len(icons), ingame_icons.MAX_ICONS)
 
+    def test_the_icon_limit_is_the_modules_atlas(self):
+        source = REPOSITORY / 'ingame_tracker' / 'src'
+        limits = [int(re.search(pattern, (source / name).read_text(encoding='utf-8')).group(1))
+                  for name, pattern in (('iconfile.h', r'#define ICONFILE_MAX\s+(\d+)'), ('gpuui.h', r'#define GPUUI_ICONS\s+(\d+)'))]
+        self.assertEqual(limits, [ingame_icons.MAX_ICONS] * 2)
+
     def test_the_songs_pictures_are_the_melody_lists_in_the_order_of_the_games_scores(self):
         self.assertEqual(sorted(ingame_icons.MELODY_ORDER), sorted(item for item, _ in SONGS))
         self.assertEqual(ingame_icons.LAYOUT_PICTURES['Zeldas Lullaby'], 'OcarinaMelodyIcon_00')

@@ -91,8 +91,8 @@ With a seed made or updated by 0.4.0, and `icons.bin` made from the game (`updat
   This is also the check that `IsGet.Item_Melody_<name>` is set when a song is learned (the flags exist in the game's data; that the game
   sets them is read from its cutscenes, not seen).
 - The pictures: in the log, `the icons are in` still shows once, with 50 icons in; each song cell shows a white picture on its colour. Check each
-  picture is the right song's (the numbering is the ocarina melody list's, read from the game's data and not yet seen): a wrong one means
-  `ingame_icons.MELODY_ORDER` is off.
+  picture is the right song's (the numbering is the ocarina melody list's; decoded on the PC the pictures match: Epona's a horse, Sun's a
+  sun, Storms' clouds, Minuet's a tree, Bolero's a flame, Serenade's a water drop): a wrong one means `ingame_icons.MELODY_ORDER` is off.
 - The panel with every song learned, two status lines (a save of another seed, then the goal reached) and the 35 regions fits the
   screen at 720p and 1080p: nothing cut off at the bottom, the hint line visible; the regions' names are readable at the new, tighter
   row height.
