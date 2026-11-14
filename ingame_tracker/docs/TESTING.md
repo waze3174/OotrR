@@ -1,8 +1,10 @@
 # Live test plan
 
-Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.4.0 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 and 2), the state, a
-region's list of checks, the game-data reader over a fake GameData, the controls (repeat, what the game doesn't see), the browsing and the
-icons file's index.
+Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.5.0 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 to 3), the state, a
+region's list of checks, the game-data reader over a fake GameData, the controls (repeat, what the game doesn't see), the browsing, the
+icons file's index, the postcard's and the console's settings and files, the console's lines and fading, its mailbox (half-written
+writes, a full ring, the status line) and where the console goes next to every postcard. OotrR's `tests/test_console_bridge.py` covers
+the client's side on fake game memory: finding the mailbox after main, the write order, the room left, another seed.
 These steps cover the rest. Back up the save first.
 
 ## Setup
@@ -65,9 +67,10 @@ With a seed this version made from your game (or one updated with `update-tracke
 
 ## 3d. The postcard
 
-- The regions end with a **Postcard** entry (Off at first, dim); the highlight reaches it by down in the last column or right from
-  the one before. A opens four rows: Postcard, Position, Size, Opacity, with `< value >`; up and down choose, left and right change
-  the value at once (Position wraps, Opacity goes 25, 50, 75, 100 %). B goes back to the regions.
+- The regions end with a **Settings** entry; the highlight reaches it by down in the last column or right from the one before. A
+  opens a page with Postcard (Off at first) and Console. A on Postcard opens four rows: Postcard, Position, Size, Opacity, with
+  `< value >`; up and down choose, left and right change the value at once (Position wraps, Opacity goes 25, 50, 75, 100 %). B goes
+  back to the Settings page, B again to the regions.
 - Turn it On: while the settings are shown the card appears in its corner (bottom right, small, 50 % by default) and follows each change
   of position, size and opacity. It shows the items, the stones and medallions, and the dungeons' keys; a `?` where the game has no flag.
 - B twice (the panel closes): the card stays, in the same place, and the game still gets every button (move, camera, A, B).
@@ -100,6 +103,39 @@ With a seed made or updated by 0.4.0, and `icons.bin` made from the game (`updat
 - A seed installed before 0.4.0 and not updated: the song cells show their letters with a `?`, and nothing else changes. After
   `update-tracker` the songs are tracked; its pictures need `--nup`.
 - Rename `icons.bin`: the songs show their letters (Mi, Bo, Se, Re, No, Pr, Lu, Ep, Sa, Su, ST, SS).
+
+## 3f. The console (0.5.0)
+
+Needs an Archipelago seed made or updated by 0.5.0 (`update-tracker`), OotrR's Archipelago client (the application's Archipelago
+page, or `ap-client`) on the same PC as the emulator, and a room to join. A second player (or a second slot of the same room in
+Archipelago's own text client) helps to send items and chat.
+
+- Boot the seed: the log's seed line ends `, an Archipelago seed`. With no client running, about 10 s after that line the bottom of
+  the screen shows a dim "Archipelago client not running" in a small box; nothing else of the console shows.
+- Connect from the application: within a second or two the status line becomes "Archipelago: connecting to <server> as <slot>", then
+  disappears once connected; the log says `console: the Archipelago client is writing to it`. Close the application (or Disconnect):
+  "Archipelago client not running" comes back after about 10 s.
+- Messages: have the other player send you an item (a gold line "<player> sent <item> to you ..."), find one of theirs (a green
+  line), type a chat line on either side (white), `!hint <item>` (blue) and watch a join or a part (grey). Each shows within about a
+  second, wraps if long, fades after 10 s. An item between two other players is not shown.
+- The game keeps every button while the console shows; it never covers the panel (closed while the panel is open, except as the
+  preview).
+- Settings > Console: Console On (an Archipelago seed's default), Position, Opacity, Lines, Fade, Messages. While this page or the
+  Messages page is open the console is drawn whole as a preview ("No messages yet" before the first). Check each position (bottom
+  and top centre wide, left and right centre tall), each opacity, 4/6/8/12 lines (a 12-line box at the left or the right fits the
+  screen at 720p and 1080p), each fade (Permanent keeps the lines), and that untick a kind on the Messages page hides its lines.
+- With the postcard on in each corner and size: the console never overlaps the card (it moves aside, narrows, or goes above or
+  below it); check bottom centre with a large card bottom right at 4:3 if the emulator can show it.
+- Names with accents (é, ü) show as letters; others (Japanese, emoji) as `?`. This checks that the game's font has the Latin-1
+  letters: if they show as blanks or boxes, say so.
+- Quit and start again: the console's settings come back (`<user folder>/sdmc/ootrTracker/console.cfg`); delete it or fill it with
+  junk: the defaults, no crash. A local seed starts with the console Off, and turning it on there leaves the Archipelago default alone.
+- Auto-connect: on the Archipelago page tick "Connect automatically when the game runs this seed": `archipelago.json` appears in the
+  seed folder with the server, slot, password and `"auto_connect": true`. Close the application, open it, open the seed: the fields
+  are filled from the file. Start the game: within about 5 s of the seed line in the log, the application connects by itself.
+  Disconnect by hand: it doesn't connect again until the seed is opened again. Generate the seed again from the same patch: the file
+  is kept.
+- On a Linux build of the emulator (native, not Wine), the same with the application running natively on Linux.
 
 ## 4. What it shows
 
