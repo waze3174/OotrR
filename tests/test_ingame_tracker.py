@@ -794,6 +794,18 @@ class SongsInTheGameTests(unittest.TestCase):
         for item, flag in SONGS:
             self.assertIn(murmur3('IsGet.' + flag), saved, item)
 
+    def test_every_way_of_adding_a_song_sets_its_flag(self):
+        # The pouch writes IsGet.<name> for the names of its IsGet struct (soul_adapter): a song given by name
+        # (a shuffled song's text-only get, a starting song, an Archipelago song) sets the flag the tracker reads.
+        from oot_rando.formats.inspect_resources import Byml, decompress, dictionaries
+        from oot_rando.patching.song_adapter import SONGS as SHUFFLED_SONGS
+        raw = decompress(self.nup.read(self.nup.latest('romfs/' + GAMEDATA)), dictionaries(self.nup))
+        struct_ = next(e for e in Byml(raw).root['Data']['Struct'] if e['Hash'] == murmur3('IsGet'))
+        members = {int(m['Hash']): int(m['Value']) for m in struct_['DefaultValue']}
+        for item, flag in SONGS:
+            self.assertEqual(members.get(murmur3(flag)), murmur3('IsGet.' + flag), item)
+            self.assertEqual(SHUFFLED_SONGS[item][0], flag, item)   # the actor the song shuffle gives
+
     def test_the_game_has_a_picture_for_every_song(self):
         icons = dict(ingame_icons.parse(ingame_icons.nup_icons(self.nup)))
         for item, _ in SONGS:

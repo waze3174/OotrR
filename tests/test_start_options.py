@@ -79,6 +79,18 @@ class GuiSourceTests(unittest.TestCase):
         source = Path(__file__).resolve().parents[1] / 'src' / 'oot_rando' / 'gui' / 'randomizer_gui.py'
         compile(source.read_text(encoding='utf-8'), str(source), 'exec')
 
+    def test_the_tracker_names_the_kind_of_every_full_randomizer_check(self):
+        # Checks.json categories are 'full_<source>' ('full_chests' for chests): each needs a kind in the tracker.
+        import ast
+        from pathlib import Path
+        from oot_rando.randomizer.full_randomizer import SOURCE_LABELS
+        source = Path(__file__).resolve().parents[1] / 'src' / 'oot_rando' / 'gui' / 'randomizer_gui.py'
+        node = next(n for n in ast.parse(source.read_text(encoding='utf-8')).body if isinstance(n, ast.Assign)
+                    and getattr(n.targets[0], 'id', None) == 'TRACKER_KINDS')
+        kinds = ast.literal_eval(node.value)
+        for name in SOURCE_LABELS:
+            self.assertIn('full_' + ('chests' if name == 'chest' else name), kinds, name)
+
 
 class DungeonStartTests(unittest.TestCase):
     def test_start_values(self):

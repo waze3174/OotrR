@@ -68,6 +68,26 @@ class KeyTrackingTests(unittest.TestCase):
         self.assertEqual(keys['Shadow Temple'], ((5, 5), True))
         self.assertEqual(keys["Ganon's Castle"], ((2, 2), False))  # Ganon's key is not a temple key
 
+    def test_chosen_key_rings_show_on_their_dungeons_only(self):
+        # Key rings for chosen dungeons: the seed adds the get flags of those rings only (build_key_files), the
+        # other dungeons keep their keys in place and count them from SmallKeyTotalNum.
+        from oot_rando.patching.key_adapter import key_records, ring_item
+        from oot_rando.randomizer.full_randomizer import key_ring_folders
+        options = {'shuffle_smallkeys': 'keysanity', 'key_rings': 'choose',
+                   'key_rings_list': ('Gerudo Training Ground', 'Ganons Castle')}
+        folders = key_ring_folders(options, 'seed')
+        self.assertEqual(folders, ['GerudoTrainingGround', 'InsideGanonCastle'])
+        saved = {'Int': SAVED['Int'], 'Bool': {h(f, 'IsGetBossKey') for f in TRACKED_BOSS_KEYS}
+                 | {got(record['actor']) for record in key_records(ring_item(f) for f in folders)}}
+        rows = key_tracking(options, saved)
+        self.assertEqual({r['folder'] for r in rows if r['small'] and r['small']['ring']}, set(folders))
+        snapshot = {'int': {h('ForestTemple', 'SmallKeyTotalNum'): 2},
+                    'bool': {got(ring_actor('GerudoTrainingGround')): True}}
+        keys = {name: small for name, small, _ in dungeon_keys(rows, snapshot)}
+        self.assertEqual(keys['Gerudo Training Ground'], (9, 9))
+        self.assertEqual(keys["Ganon's Castle"], (0, 2))
+        self.assertEqual(keys['Forest Temple'], (2, 5))
+
     def test_unknown_entries_skipped(self):
         self.assertEqual(key_tracking({}, {'Int': set(), 'Bool': set()}), [])
 

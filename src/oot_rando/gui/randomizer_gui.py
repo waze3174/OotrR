@@ -54,7 +54,7 @@ TRACKER_KINDS = {
     'vanilla_smallcrate': 'Small crate', 'vanilla_pot': 'Pot', 'vanilla_flyingpot': 'Flying pot',
     'vanilla_boss': 'Boss', 'vanilla_bossheart': 'Heart Container', 'vanilla_cutscene': 'Cutscene',
     'vanilla_rupeetower': 'Rupee tower', 'full_boss': 'Dungeon reward', 'full_bossheart': 'Boss heart container',
-    'full_fairy': 'Great fairy', 'full_quest': 'Quest reward',
+    'full_fairy': 'Great fairy', 'full_quest': 'Quest reward', 'full_song': 'Song',
 }
 
 OPTION_COPY = {
