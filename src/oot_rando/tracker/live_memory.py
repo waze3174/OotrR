@@ -1,4 +1,5 @@
-"""Real-time GameData bools from a running game: Hookshot, or a yuzu-family emulator (Windows).
+"""Real-time GameData bools from a running game: Hookshot (Windows), or a yuzu-family emulator
+(Windows, or native Linux).
 
 Layout, as Hookshot v2.1.0's own cheat menu reads it (tools/host/hos_main.c, oot_gamedata_set_bool):
 - guest memory is one window at the fixed host address A64_HOST_BASE = 0x100000000000
@@ -26,13 +27,21 @@ key, 16 bytes each (u64 key, u32 reset type, u8 value at +0xC). The game binary-
 for its Gold Skulltula count. When they cannot be read they keep coming from progress.sav.
 The only write is ``LiveGameData.set_bool`` (the Archipelago
 client's reception signal, ``patching.ap_mailbox``): one value byte, as the cheat menu does.
+
+Process access: ``ProcessMemory`` (Windows: ReadProcessMemory / WriteProcessMemory) or
+``LinuxProcessMemory`` (``/proc/<pid>/mem``, a native Linux emulator such as Ryuchii's Linux
+build); :func:`process_memory` picks the system's. Both list the process's regions and hand
+them to the same :func:`emulator_layout`. A Windows copy of this application under
+Wine/Proton cannot read a native Linux process.
 """
 import bisect
 import ctypes
 import hashlib
+import os
 import struct
+import sys
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from oot_rando.pc_port import is_port_process
 
@@ -50,7 +59,6 @@ EXTRA_EMULATORS_KEY = 'extra_emulators'   # gui_state.json: executables the play
 
 def parse_exe_names(text):
     """Executable names from a free list (commas, semicolons or lines): lower case, '.exe' added."""
-    from pathlib import PureWindowsPath
     names = set()
     for part in text.replace(';', ',').replace('\n', ',').split(','):
         name = PureWindowsPath(part.strip().strip('"')).name.lower()
@@ -79,6 +87,17 @@ def emulator_exes():
             extra = ''
         set_extra_emulators(extra if isinstance(extra, str) else '')
     return EMULATOR_EXES | _extra_emulators
+
+
+def plain_name(name):
+    """Executable name without folder and '.exe', lower case: 'ryuchii.exe' matches the Linux 'ryuchii'."""
+    name = PureWindowsPath(str(name).strip().strip('"')).name.lower()
+    return name[:-4] if name.endswith('.exe') else name
+
+
+def supported():
+    """True where the running game's memory can be read: Windows, and Linux (native emulators)."""
+    return os.name == 'nt' or sys.platform.startswith('linux')
 
 
 HOOKSHOT_MAIN = 0x80020000                 # where Hookshot keeps the main module
@@ -294,10 +313,212 @@ class ProcessMemory:
         self.handle, self.pid = None, None
 
 
+# /proc/<pid>/maps rows never read: kernel pages /proc/<pid>/mem refuses, and device mappings
+# (GPU memory). Guest memory is the emulator's memfd ("/memfd:HostMemory") or anonymous.
+SKIPPED_MAPPINGS = ('[vvar]', '[vvar_vclock]', '[vsyscall]')
+COMM_LENGTH = 15   # /proc/<pid>/comm keeps the first 15 bytes of the name
+
+
+def parse_maps(text):
+    """(start, size, permissions, path) of each /proc/<pid>/maps row (pure)."""
+    rows = []
+    for line in text.splitlines():
+        fields = line.split(None, 5)
+        if len(fields) < 5 or '-' not in fields[0]:
+            continue
+        try:
+            start, end = (int(value, 16) for value in fields[0].split('-', 1))
+        except ValueError:
+            continue
+        rows.append((start, end - start, fields[1], fields[5].strip() if len(fields) > 5 else ''))
+    return rows
+
+
+def readable_regions(rows):
+    """(address, size, MEM_COMMIT) of the readable mappings, as :func:`emulator_layout` takes them (pure)."""
+    return [(start, size, MEM_COMMIT) for start, size, permissions, path in rows
+            if permissions.startswith('r') and path not in SKIPPED_MAPPINGS
+            and not (path.startswith('/dev/') and not path.startswith('/dev/shm/'))]
+
+
+def exe_link_name(target):
+    """Name of the /proc/<pid>/exe target; an executable replaced on disk ends in ' (deleted)' (pure)."""
+    if target.endswith(' (deleted)'):
+        target = target[:-len(' (deleted)')]
+    return plain_name(target.replace('\\', '/').rsplit('/', 1)[-1])
+
+
+def names_match(names, wanted):
+    """True when a process name is a wanted emulator's (``wanted``: plain names); a 15-character
+    name may be a truncated /proc/<pid>/comm (pure)."""
+    return any(name and (name in wanted or (len(name) == COMM_LENGTH and any(w.startswith(name) for w in wanted)))
+               for name in names)
+
+
+def linux_process_names(proc, pid):
+    """Plain names of a process: its comm and the file name of its executable (when readable)."""
+    names = set()
+    try:
+        names.add(plain_name(Path(proc, str(pid), 'comm').read_text(encoding='utf-8', errors='replace').strip()))
+    except OSError:
+        pass
+    try:
+        names.add(exe_link_name(os.readlink(os.path.join(proc, str(pid), 'exe'))))
+    except (OSError, NotImplementedError, ValueError):
+        pass
+    return names
+
+
+def linux_emulator_pids(emulators, proc='/proc', own=None):
+    """Process ids whose comm or executable name is one of ``emulators`` (with or without '.exe')."""
+    wanted = {plain_name(name) for name in emulators}
+    try:
+        entries = os.listdir(proc)
+    except OSError:
+        return []
+    pids = sorted(int(entry) for entry in entries if entry.isdigit() and int(entry) != own)
+    return [pid for pid in pids if names_match(linux_process_names(proc, pid), wanted)]
+
+
+def ptrace_scope(proc='/proc'):
+    """Yama's kernel.yama.ptrace_scope (0 to 3), or None without Yama."""
+    try:
+        return int(Path(proc, 'sys', 'kernel', 'yama', 'ptrace_scope').read_text(encoding='ascii').strip())
+    except (OSError, ValueError):
+        return None
+
+
+def denied_message(scope):
+    """Why Linux refused to open the emulator's memory, and the fix (pure)."""
+    if scope == 1:
+        return ('Linux refused to read the emulator\'s memory: kernel.yama.ptrace_scope is 1 (only a parent '
+                'process may read it). Fix: the emulator can allow it with prctl(PR_SET_PTRACER, '
+                'PR_SET_PTRACER_ANY), or set kernel.yama.ptrace_scope to 0 (sysctl, as root).')
+    if scope == 2:
+        return ('Linux refused to read the emulator\'s memory: kernel.yama.ptrace_scope is 2 (administrators '
+                'only). Fix: set kernel.yama.ptrace_scope to 0 (sysctl, as root).')
+    if scope == 3:
+        return ('Linux refused to read the emulator\'s memory: kernel.yama.ptrace_scope is 3 (no process may, '
+                'and it stays so until a restart). Fix: set it to 0 in the boot settings (sysctl.d), then restart.')
+    return ('Linux refused to read the emulator\'s memory' + (f' (kernel.yama.ptrace_scope is {scope})'
+            if scope is not None else '') + ': run this application as the user who runs the emulator.')
+
+
+class LinuxProcessMemory:
+    """``/proc/<pid>/mem`` of a native Linux emulator that has the game loaded (same interface as
+    :class:`ProcessMemory`).
+
+    /proc/<pid>/mem rather than process_vm_readv: plain os.pread/os.pwrite (no libc through
+    ctypes), the permission check happens once when the file is opened, and a read crossing an
+    unmapped page just comes back short.
+    """
+    def __init__(self, proc='/proc'):
+        self.proc, self.fd, self.pid, self.next_scan = proc, None, None, 0.0
+        self.base, self.slot = HOST_BASE, GAMEDATA_SLOT
+        self.failure = 'game not running'   # the last scan's answer, repeated until the next scan
+
+    def _open(self, pid, flags):
+        return os.open(os.path.join(self.proc, str(pid), 'mem'), flags)
+
+    def _regions(self, pid):
+        try:
+            text = Path(self.proc, str(pid), 'maps').read_text(encoding='utf-8', errors='replace')
+        except OSError:
+            return []
+        return readable_regions(parse_maps(text))
+
+    @staticmethod
+    def _read(fd, host, size):
+        try:
+            data = os.pread(fd, size, host)
+        except (OSError, OverflowError):
+            return None
+        return data if len(data) == size else None
+
+    def attach(self):
+        if self.fd is not None:
+            if Path(self.proc, str(self.pid)).is_dir():
+                return
+            self.close()
+        now = time.monotonic()
+        if now < self.next_scan:
+            raise LiveUnavailable(self.failure)
+        self.next_scan = now + 5   # same pace as the Windows scan
+        denied = False
+        for pid in linux_emulator_pids(emulator_exes(), self.proc, os.getpid()):
+            try:
+                fd = self._open(pid, os.O_RDONLY)
+            except PermissionError:
+                denied = True
+                continue
+            except OSError:
+                continue
+            layout = emulator_layout(self._regions(pid), lambda host, size: self._read(fd, host, size))
+            if layout:
+                self.fd, self.pid = fd, pid
+                self.base, self.slot = layout
+                return
+            os.close(fd)
+        self.failure = denied_message(ptrace_scope(self.proc)) if denied else 'game not running'
+        raise LiveUnavailable(self.failure)
+
+    def read(self, guest, size):
+        data = self._read(self.fd, self.base + guest, size) if self.fd is not None else None
+        if data is None:
+            raise LiveUnavailable(f'cannot read at {guest:#x}')
+        return data
+
+    def write(self, guest, data):
+        """pwrite through a file opened for this write only."""
+        try:
+            fd = self._open(self.pid, os.O_RDWR)
+        except PermissionError:
+            raise LiveUnavailable(denied_message(ptrace_scope(self.proc))) from None
+        except OSError:
+            raise LiveUnavailable('cannot open the game for writing') from None
+        try:
+            done = os.pwrite(fd, data, self.base + guest)
+        except (OSError, OverflowError):
+            done = -1
+        finally:
+            os.close(fd)
+        if done != len(data):
+            raise LiveUnavailable(f'cannot write at {guest:#x}')
+
+    def close(self):
+        if self.fd is not None:
+            try:
+                os.close(self.fd)
+            except OSError:
+                pass
+        self.fd, self.pid = None, None
+
+
+class NoProcessMemory:
+    """Systems without a memory reader: always unavailable."""
+    def attach(self):
+        raise LiveUnavailable('live memory reading needs Windows or Linux')
+
+    def read(self, guest, size):
+        raise LiveUnavailable('live memory reading needs Windows or Linux')
+
+    def close(self):
+        pass
+
+
+def process_memory():
+    """This system's process memory reader."""
+    if os.name == 'nt':
+        return ProcessMemory()
+    if sys.platform.startswith('linux'):
+        return LinuxProcessMemory()
+    return NoProcessMemory()
+
+
 class LiveGameData:
     """snapshot() -> {'bool': {hash: bool}, 'sha256': ...} or raises LiveUnavailable."""
     def __init__(self, memory=None):
-        self.memory = memory or ProcessMemory()
+        self.memory = memory or process_memory()
 
     def u64(self, guest):
         return struct.unpack('<Q', self.memory.read(guest, 8))[0]
@@ -400,7 +621,7 @@ def event_playing_from(holder, manager, word):
 class LiveEventState:
     """``playing()`` -> bool, or raises LiveUnavailable. Reads 24 bytes, never writes."""
     def __init__(self, memory=None):
-        self.memory = memory or ProcessMemory()
+        self.memory = memory or process_memory()
 
     def u64(self, guest):
         return struct.unpack('<Q', self.memory.read(guest, 8))[0]

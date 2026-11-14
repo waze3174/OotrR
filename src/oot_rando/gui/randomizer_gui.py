@@ -330,7 +330,7 @@ class Application:
         for event in ('<FocusOut>', '<Return>'):
             entry.bind(event, lambda e: self.save_extra_emulators())
         ttk.Label(box, text='Live tracking finds Hookshot, Longshot, Lichii, Ryuchii, Eden, yuzu, suyu, citron and sudachi. '
-                  'Another yuzu-based emulator? Add its .exe name here (comma-separated).',
+                  'Another yuzu-based emulator? Add its executable name here (comma-separated; on Linux, with or without .exe).',
                   style='Small.TLabel', wraplength=780).pack(anchor='w')
         self.build_qol_card(parent)
         box = self.card(parent, 'Save', 'The tracker reads your progress.sav. It is found automatically; pick it by hand only if needed.')
@@ -1432,7 +1432,7 @@ class Application:
         try:
             manifest, catalogue = read_artifact(self.artifact)
             self.current_checks = catalogue['checks']
-            live = live_memory.LiveGameData() if os.name == 'nt' else None
+            live = live_memory.LiveGameData() if live_memory.supported() else None
             self.tracker = TrackerSession(self.artifact, self.slot.get(), save_path=self.save_path.get(), live=live)
             self.connection_status.set('Reading at the latest save' if self.save_path.get() else 'Choose a progress.sav file to enable automatic tracking.')
             self.render_tracker()
