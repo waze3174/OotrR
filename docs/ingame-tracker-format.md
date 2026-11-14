@@ -97,7 +97,13 @@ item's flags exists in the game, the item is unknown (the panel marks it with a 
 `Soul (` are enemy souls. The strength upgrades (`IsGet.Armor_Child_Gauntlet_Goron`, `..._Adult_Gauntlet_Silver`,
 `..._Adult_Gauntlet_Gold`), the Lens of Truth (`IsGet.Armor_GlassTruth`) and the Fire Arrows (`IsGet.Item_Arrow_Fire`)
 have no chest actor to lead to their flags: the exporter adds their rules (`tracking_metadata.EXTRA_INVENTORY`),
-also to the files of seeds made before it did.
+also to the files of seeds made before it did. So are the twelve ocarina songs, which are learned in cutscenes
+(`tracking_metadata.SONGS`): `Minuet of Forest`, `Bolero of Fire`, `Serenade of Water`, `Requiem of Spirit`,
+`Nocturne of Shadow`, `Prelude of Light`, `Zeldas Lullaby`, `Eponas Song`, `Sarias Song`, `Suns Song`, `Song of Time` and
+`Song of Storms`, one rule each (level 1): the Bool `IsGet.Item_Melody_ForestMinuet`, `..._FireBolero`, `..._WaterSerenade`,
+`..._SpiritRequiem`, `..._ShadowNocturne`, `..._LightPrelude`, `..._ZeldaLullaby`, `..._EponaSong`, `..._SariaSong`,
+`..._SunSong`, `..._TimeSong` and `..._StormSong`. The format itself did not change: a module that doesn't know the songs ignores
+these items, and a file made before them leaves the songs unknown in the module.
 
 ### Keys (24 bytes each)
 
@@ -142,7 +148,7 @@ Everything is little-endian. The header, the index, then the pictures, each star
 | 4 | u16 | version (1) |
 | 6 | u16 | header size (32) |
 | 8 | u32 | file size |
-| 12 | u32 | icon count (1 to 40) |
+| 12 | u32 | icon count (1 to 56) |
 | 16 | u32 | index offset (32) |
 | 20 | u32 | entry size (64) |
 | 24 | u32 | data offset: index offset + count × 64 |
@@ -161,10 +167,14 @@ Everything is little-endian. The header, the index, then the pictures, each star
 | 56 | u8[4] | the channels' sources (BRTI + 0x58), as NVN swizzle values: 0 zero, 1 one, 2 to 5 red, green, blue, alpha |
 | 60 | u32 | the BNTX's format: 0x2D01 ASTC 4x4 unorm, 0x2D06 ASTC 4x4 sRGB |
 
-The entries follow the panel's grid, then the keys (`Item_Dungeon_SmallKey`, `Item_Dungeon_BossKey`): 38 with
-the game of 13/11. An item whose picture the game lacks (another version of the game) has no entry and shows as its
+The entries follow the panel's grid, then the songs, then the keys (`Item_Dungeon_SmallKey`, `Item_Dungeon_BossKey`): 38 with
+the game of 13/11 without the songs, 50 with them. The songs' pictures are the ocarina's melody list's
+(`OcarinaMelodyIcon_00` to `_11` in the same archive, numbered as the game's melody scores list the songs: Zelda's Lullaby, Epona's,
+Saria's, Sun's, Time, Storms, then Minuet, Bolero, Serenade, Requiem, Nocturne, Prelude): 107 pixels, ASTC 4x4 sRGB, swizzled to grey
+with alpha. The count's limit was 40 before module 0.4.0 (it refused a longer file, and showed the letters); the format's version is
+unchanged, and an older file (38 entries, without the songs) still reads: the songs then show their letters. An item whose picture the game lacks (another version of the game) has no entry and shows as its
 letters. The Megaton Hammer's picture is `Item_Hammer_PouchIcon` (683 pixels), not `Item_Hammer` (1440). The
-stones' and medallions' pictures (133 pixels) are read from the archive as it decompresses, only as far as the last
+stones' and medallions' (133 pixels) and the songs' pictures are read from the archive as it decompresses, only as far as the last
 of them; no other of its 878 textures is kept.
 
 ## What the module reads from the game

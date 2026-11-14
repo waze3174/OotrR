@@ -66,16 +66,27 @@ ITEM_LABELS = {
 }
 
 
+# The ocarina songs as the in-game tracker names them (the Archipelago item names), in its grid's order (the quest
+# status screen's: the warp songs, then the others), with the game's saved Bool that says each is learned (IsGet.<flag>).
+SONGS = (
+    ('Minuet of Forest', 'Item_Melody_ForestMinuet'), ('Bolero of Fire', 'Item_Melody_FireBolero'),
+    ('Serenade of Water', 'Item_Melody_WaterSerenade'), ('Requiem of Spirit', 'Item_Melody_SpiritRequiem'),
+    ('Nocturne of Shadow', 'Item_Melody_ShadowNocturne'), ('Prelude of Light', 'Item_Melody_LightPrelude'),
+    ('Zeldas Lullaby', 'Item_Melody_ZeldaLullaby'), ('Eponas Song', 'Item_Melody_EponaSong'),
+    ('Sarias Song', 'Item_Melody_SariaSong'), ('Suns Song', 'Item_Melody_SunSong'),
+    ('Song of Time', 'Item_Melody_TimeSong'), ('Song of Storms', 'Item_Melody_StormSong'),
+)
+
 # Get flags no chest actor leads to: the strength upgrades' and the Lens's pouch names differ from their
-# actors' (IsGet.Armor_GlassTruth, not ...Child_/Adult_GlassTruth) and no actor gives the Fire Arrows. These
-# are the game's saved Bools (GameDataList 1.1), named as the items' icons are.
+# actors' (IsGet.Armor_GlassTruth, not ...Child_/Adult_GlassTruth), no actor gives the Fire Arrows, and the songs
+# are learned in cutscenes. These are the game's saved Bools (GameDataList 1.1), named as the items' icons are.
 EXTRA_INVENTORY = (
     ('Progressive Strength Upgrade', 'Armor_Child_Gauntlet_Goron', 1),
     ('Progressive Strength Upgrade', 'Armor_Adult_Gauntlet_Silver', 2),
     ('Progressive Strength Upgrade', 'Armor_Adult_Gauntlet_Gold', 3),
     ('Lens of Truth', 'Armor_GlassTruth', 1),
     ('Fire Arrows', 'Item_Arrow_Fire', 1),
-)
+) + tuple((item, flag, 1) for item, flag in SONGS)
 
 
 def inventory_rules(inventory, known=None):

@@ -1,5 +1,6 @@
 /* The items the panel shows, in rows, as the desktop tracker's in-game overlay groups them
- * (OotrR src/oot_rando/tracker/game_overlay.py, GRID). An item is named as the seed file names it. */
+ * (OotrR src/oot_rando/tracker/game_overlay.py, GRID), then the ocarina songs in two rows of six. An item is named
+ * as the seed file names it. */
 #ifndef GRID_H
 #define GRID_H
 
@@ -7,13 +8,17 @@
 
 #define GRID_ROWS    4
 #define GRID_COLUMNS 9
-#define GRID_CELLS   (GRID_ROWS * GRID_COLUMNS)
+#define ITEM_CELLS   (GRID_ROWS * GRID_COLUMNS)
+#define SONG_ROWS    2
+#define SONG_COLUMNS 6
+#define SONG_CELLS   (SONG_ROWS * SONG_COLUMNS)
+#define GRID_CELLS   (ITEM_CELLS + SONG_CELLS) /* the cells: the items first, then the songs */
 #define ABBR_MAX     4 /* an abbreviation's longest text, with its NUL */
 
 typedef struct {
   const char *item;
   const char *abbr;
-  uint8_t levels; /* how many levels the item has (the Hookshot's two: Hookshot, Longshot) */
+  uint8_t levels; /* how many levels the item has (the Hookshot's two: Hookshot, Longshot); 1 for a song */
   uint32_t colour; /* 0xRRGGBB when owned */
 } grid_cell_t;
 

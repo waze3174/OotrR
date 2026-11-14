@@ -14,6 +14,7 @@
 #include "../src/iconfile.h"
 #include "../src/npad.h"
 #include "../src/postcard.h"
+#include "../src/sizes.h"
 #include "../src/text.h"
 #include "../src/tracker.h"
 #include "../src/trkfile.h"
@@ -51,13 +52,13 @@ static uint32_t add_string(strings_t *strings, const char *text)
 
 enum { SEED_MARKER = 4000, GOAL_MARKER = 5000, BOOL_A = 100, BOOL_B = 200, BOW_L1 = 11, BOW_L2 = 12, BOOMERANG = 13,
        SOUL_GHOUL = 14, SOUL_BAT = 15, FOREST_FOUND = 21, FOREST_HELD = 22, FOREST_RING = 23, FOREST_BOSS = 24,
-       WELL_FOUND = 31, WELL_HELD = 32 };
+       WELL_FOUND = 31, WELL_HELD = 32, LULLABY = 41, SONG_OF_TIME = 42, PRELUDE = 43 };
 #define BOOL64_KEY 0x1111222233334444ull
 
 static const char *const check_names[3] = { "Mido's House Chest", "Kokiri Sword Chest", "Deku Tree Map Chest" };
 
-/* Two regions (2 and 1 checks), four items, two dungeons with keys; the strings come first. Version 1 has no
- * check names. */
+/* Two regions (2 and 1 checks), seven items (the last three are songs), two dungeons with keys; the strings come
+ * first. Version 1 has no check names. */
 static blob_t synthetic_of_version(int version)
 {
   blob_t blob = { { 0 }, 0 };
@@ -66,13 +67,15 @@ static blob_t synthetic_of_version(int version)
   uint32_t kokiri = add_string(&strings, "Kokiri Forest"), deku = add_string(&strings, "Deku Tree");
   uint32_t bow = add_string(&strings, "Bow"), boomerang = add_string(&strings, "Boomerang");
   uint32_t ghoul = add_string(&strings, "Soul (Ghoul)"), bat = add_string(&strings, "Soul (Bat)");
+  uint32_t lullaby = add_string(&strings, "Zeldas Lullaby"), time_song = add_string(&strings, "Song of Time");
+  uint32_t prelude = add_string(&strings, "Prelude of Light");
   uint32_t forest_temple = add_string(&strings, "Forest Temple"), well = add_string(&strings, "Bottom of the Well");
   uint32_t names[3] = { 0, 0, 0 };
   for (int i = 0; version >= 2 && i < 3; i++)
     names[i] = add_string(&strings, check_names[i]);
   uint32_t strings_padded = (strings.size + 3) & ~3u;
   uint32_t regions_at = HEADER_BYTES + strings_padded, checks_at = regions_at + 2 * 12, items_at = checks_at + 3 * 16;
-  uint32_t rules_at = items_at + 4 * 8, keys_at = rules_at + 5 * 8, size = keys_at + 2 * 24;
+  uint32_t rules_at = items_at + 7 * 8, keys_at = rules_at + 8 * 8, size = keys_at + 2 * 24;
   uint8_t *b = blob.bytes;
   memcpy(b, "RTRK", 4);
   put16(b + 4, (uint32_t)version);
@@ -85,8 +88,8 @@ static blob_t synthetic_of_version(int version)
   put32(b + 28, strings.size);
   put32(b + 32, regions_at); put32(b + 36, 2);
   put32(b + 40, checks_at); put32(b + 44, 3);
-  put32(b + 48, items_at); put32(b + 52, 4);
-  put32(b + 56, rules_at); put32(b + 60, 5);
+  put32(b + 48, items_at); put32(b + 52, 7);
+  put32(b + 56, rules_at); put32(b + 60, 8);
   put32(b + 64, keys_at); put32(b + 68, 2);
   memcpy(b + HEADER_BYTES, strings.bytes, strings.size);
   uint32_t regions[2][3] = { { kokiri, 0, 2 }, { deku, 2, 1 } };
@@ -98,14 +101,16 @@ static blob_t synthetic_of_version(int version)
   put64(b + checks_at + 32, BOOL_B); put32(b + checks_at + 40, TRK_KIND_BOOL);
   for (int i = 0; i < 3; i++)
     put32(b + checks_at + i * 16 + 12, names[i]);
-  uint32_t items[4][3] = { { bow, 0, 2 }, { boomerang, 2, 1 }, { ghoul, 3, 1 }, { bat, 4, 1 } };
-  for (int i = 0; i < 4; i++) {
+  uint32_t items[7][3] = { { bow, 0, 2 }, { boomerang, 2, 1 }, { ghoul, 3, 1 }, { bat, 4, 1 },
+                           { lullaby, 5, 1 }, { time_song, 6, 1 }, { prelude, 7, 1 } };
+  for (int i = 0; i < 7; i++) {
     put32(b + items_at + i * 8, items[i][0]);
     put16(b + items_at + i * 8 + 4, items[i][1]);
     put16(b + items_at + i * 8 + 6, items[i][2]);
   }
-  uint32_t rules[5][2] = { { BOW_L1, 1 }, { BOW_L2, 2 }, { BOOMERANG, 1 }, { SOUL_GHOUL, 1 }, { SOUL_BAT, 1 } };
-  for (int i = 0; i < 5; i++) {
+  uint32_t rules[8][2] = { { BOW_L1, 1 }, { BOW_L2, 2 }, { BOOMERANG, 1 }, { SOUL_GHOUL, 1 }, { SOUL_BAT, 1 },
+                           { LULLABY, 1 }, { SONG_OF_TIME, 1 }, { PRELUDE, 1 } };
+  for (int i = 0; i < 8; i++) {
     put32(b + rules_at + i * 8, rules[i][0]);
     put16(b + rules_at + i * 8 + 4, rules[i][1]);
   }
@@ -144,7 +149,7 @@ static int test_parse_reads_every_table(void)
   CHECK(trk_parse(&trk, blob.bytes, blob.size, &why));
   CHECK(trk.seed_marker == SEED_MARKER && trk.goal_marker == GOAL_MARKER);
   CHECK(!strcmp(trk_string(&trk, trk.seed_id), "abc123"));
-  CHECK(trk.region_count == 2 && trk.check_count == 3 && trk.item_count == 4 && trk.key_count == 2);
+  CHECK(trk.region_count == 2 && trk.check_count == 3 && trk.item_count == 7 && trk.key_count == 2);
   trk_region_t deku = trk_region(&trk, 1);
   CHECK(!strcmp(trk_string(&trk, deku.name), "Deku Tree") && deku.first_check == 2 && deku.check_count == 1);
   trk_check_t check = trk_check(&trk, 1);
@@ -193,7 +198,7 @@ static int test_parse_refuses_a_row_leaving_its_table(void)
   put32(blob.bytes + trk.regions_at + 8, 9); /* the first region claims 9 checks of 3 */
   CHECK(!parses(&blob));
   blob = synthetic();
-  put16(blob.bytes + trk.items_at + 6, 9); /* the first item claims 9 rules of 5 */
+  put16(blob.bytes + trk.items_at + 6, 9); /* the first item claims 9 rules of 8 */
   CHECK(!parses(&blob));
   return 0;
 }
@@ -321,6 +326,8 @@ static int test_state_of_a_save(void)
   set_bool(&fake, BOW_L2, GD_TRUE);
   set_bool(&fake, BOOMERANG, GD_FALSE);
   set_bool(&fake, SOUL_GHOUL, GD_TRUE);
+  set_bool(&fake, LULLABY, GD_TRUE);
+  set_bool(&fake, SONG_OF_TIME, GD_FALSE);
   set_bool(&fake, FOREST_RING, GD_FALSE);
   set_bool(&fake, FOREST_BOSS, GD_TRUE);
   fake.bool64s[fake.bool64_count].key = BOOL64_KEY;
@@ -337,6 +344,10 @@ static int test_state_of_a_save(void)
   CHECK(state.cells[boomerang].status == ITEM_MISSING && state.cells[boomerang].level == 0);
   CHECK(state.cells[hookshot].status == ITEM_UNKNOWN);
   CHECK(state.souls_total == 2 && state.souls_owned == 1);
+  CHECK(state.cells[grid_index_of("Zeldas Lullaby")].status == ITEM_OWNED);   /* a song learned */
+  CHECK(state.cells[grid_index_of("Song of Time")].status == ITEM_MISSING);   /* the game knows its flag: not learned */
+  CHECK(state.cells[grid_index_of("Prelude of Light")].status == ITEM_UNKNOWN); /* the game has no flag for it */
+  CHECK(state.cells[grid_index_of("Eponas Song")].status == ITEM_UNKNOWN);    /* a seed file without it */
   CHECK(state.region_count == 2 && !strcmp(state.regions[0].name, "Kokiri Forest"));
   CHECK(state.regions[0].collected == 2 && state.regions[0].trackable == 2);
   CHECK(state.regions[1].collected == 0 && state.regions[1].trackable == 1);
@@ -436,6 +447,8 @@ static int test_the_real_seed_with_every_flag_set(const char *path)
   CHECK(state.region_count == 35 && state.trackable == 840 && state.collected == 840);
   CHECK(state.cells[grid_index_of("Progressive Hookshot")].level == 2);
   CHECK(state.cells[grid_index_of("Bow")].level == 3);
+  for (int song = ITEM_CELLS; song < GRID_CELLS; song++) /* a seed file made before the songs: the game's flags aren't asked */
+    CHECK(state.cells[song].status == ITEM_UNKNOWN);
   fake = fake_with(GD_UNKNOWN);
   tracker_compute(&trk, &fake.source, &state);
   CHECK(state.collected == 0 && state.unreadable == 840);
@@ -1006,7 +1019,7 @@ static int test_the_icons_state_is_the_full_states_cells_and_keys(void)
 
 static int test_grid_names_and_labels(void)
 {
-  CHECK(grid_index_of("Bow") >= 0 && grid_index_of("Light Medallion") == GRID_CELLS - 1);
+  CHECK(grid_index_of("Bow") >= 0 && grid_index_of("Light Medallion") == ITEM_CELLS - 1);
   CHECK(grid_index_of("Soul (Bat)") == -1);
   for (int i = 0; i < GRID_CELLS; i++) {
     for (int j = i + 1; j < GRID_CELLS; j++)
@@ -1028,6 +1041,71 @@ static int test_grid_names_and_labels(void)
   CHECK(!strcmp(grid_dungeon_medallion("Shadow Temple"), "Shadow Medallion"));
   CHECK(!grid_dungeon_medallion("Bottom of the Well") && !grid_dungeon_medallion("Gerudo Training Ground"));
   CHECK(!grid_dungeon_medallion("Ganon's Castle") && !grid_dungeon_medallion("Deku Tree"));
+  return 0;
+}
+
+/* the songs, as the quest status screen lists them: the warp songs, then the others */
+static int test_the_songs_follow_the_items_in_two_rows_of_six(void)
+{
+  const char *songs[SONG_CELLS] = { "Minuet of Forest", "Bolero of Fire", "Serenade of Water", "Requiem of Spirit",
+                                    "Nocturne of Shadow", "Prelude of Light", "Zeldas Lullaby", "Eponas Song",
+                                    "Sarias Song", "Suns Song", "Song of Time", "Song of Storms" };
+  CHECK(SONG_ROWS * SONG_COLUMNS == SONG_CELLS && SONG_CELLS == 12 && GRID_CELLS == ITEM_CELLS + SONG_CELLS);
+  for (int i = 0; i < SONG_CELLS; i++) {
+    CHECK(!strcmp(grid_cell(ITEM_CELLS + i)->item, songs[i]) && grid_index_of(songs[i]) == ITEM_CELLS + i);
+    CHECK(strlen(grid_cell(ITEM_CELLS + i)->abbr) == 2 && grid_cell(ITEM_CELLS + i)->levels == 1);
+  }
+  return 0;
+}
+
+/* --- sizes ------------------------------------------------------------------------------------ */
+
+enum { REAL_SEED_REGIONS = 35, DUNGEONS_WITH_KEYS = 8 };
+
+/* a font pixel is the picture's height over 360, so what fits at one resolution fits at all of the same shape */
+static const struct { int width, height; } screens[] = { { 1280, 720 }, { 1920, 1080 } };
+
+static panel_shape_t regions_shape(int status_lines)
+{
+  return (panel_shape_t){ .status_lines = status_lines, .tracking = true, .has_keys = true, .has_summary = true,
+                          .region_rows = browse_region_rows(REAL_SEED_REGIONS) };
+}
+
+static int test_the_panel_fits_the_screen_with_the_songs(void)
+{
+  CHECK(sizes_panel_height(&(panel_shape_t){ 0 }) == 48); /* the title alone */
+  panel_shape_t plain = regions_shape(0), warned = regions_shape(MAX_STATUS_LINES);
+  CHECK(sizes_panel_height(&plain) == 326 && sizes_panel_height(&warned) == 350);
+  panel_shape_t list = { .tracking = true, .list = true }, settings = { .tracking = true, .postcard_page = true };
+  const panel_shape_t *shapes[] = { &plain, &warned, &list, &settings };
+  for (unsigned s = 0; s < sizeof(screens) / sizeof(*screens); s++) {
+    float fp = (float)screens[s].height / PICTURE_HEIGHT_FP;
+    for (unsigned i = 0; i < sizeof(shapes) / sizeof(*shapes); i++) {
+      CHECK((MARGIN_FP + sizes_panel_height(shapes[i])) * fp <= (float)screens[s].height);
+      CHECK((2 * MARGIN_FP + sizes_panel_width(shapes[i])) * fp <= (float)screens[s].width);
+    }
+  }
+  return 0;
+}
+
+static int test_the_postcard_fits_the_screen_at_each_size(void)
+{
+  CHECK(sizes_card_width() == 208 && sizes_card_height(DUNGEONS_WITH_KEYS) == 157 && sizes_card_height(0) == 112);
+  CHECK(sizes_key_rows(DUNGEONS_WITH_KEYS, CARD_KEY_COLUMNS) == 3 && sizes_key_rows(0, CARD_KEY_COLUMNS) == 0);
+  const float widths_1080[POSTCARD_SIZE_COUNT] = { 343, 468, 624 }; /* about 340, 470 and 620 pixels */
+  for (unsigned s = 0; s < sizeof(screens) / sizeof(*screens); s++) {
+    float picture_fp = (float)screens[s].height / PICTURE_HEIGHT_FP;
+    for (int size = 0; size < POSTCARD_SIZE_COUNT; size++) {
+      postcard_settings_t settings = postcard_defaults();
+      settings.size = (uint8_t)size;
+      float fp = picture_fp * postcard_scale(&settings);
+      float width = sizes_card_width() * fp, height = sizes_card_height(DUNGEONS_WITH_KEYS) * fp;
+      float margin = MARGIN_FP * picture_fp;
+      CHECK(width + 2 * margin <= (float)screens[s].width && height + 2 * margin <= (float)screens[s].height);
+      if (screens[s].height == 1080)
+        CHECK(width > widths_1080[size] - 1 && width < widths_1080[size] + 1);
+    }
+  }
   return 0;
 }
 
@@ -1102,7 +1180,7 @@ static int test_icons_index_refuses_damage(void)
 {
   struct { const char *what; size_t at; uint32_t value; int bytes; } damage[] = {
     { "magic", 0, 0x58585858, 4 },        { "version", 4, 2, 2 },               { "header size", 6, 64, 2 },
-    { "file size", 8, 100, 4 },           { "count 0", 12, 0, 4 },              { "count 41", 12, ICONFILE_MAX + 1, 4 },
+    { "file size", 8, 100, 4 },           { "count 0", 12, 0, 4 },              { "one icon too many", 12, ICONFILE_MAX + 1, 4 },
     { "index place", 16, 64, 4 },         { "entry size", 20, 48, 4 },          { "data place", 24, 176, 4 },
     { "reserved", 28, 1, 4 },             { "an empty name", 32, 0, 1 },        { "width 0", 64, 0, 4 },
     { "width 5000", 64, 5000, 4 },        { "height 0", 68, 0, 4 },             { "a misaligned offset", 72, 168, 4 },
@@ -1217,6 +1295,9 @@ static const test_t tests[] = {
   { "postcard_file_tolerates_a_bad_file", test_postcard_file_tolerates_a_bad_file, 0 },
   { "the_icons_state_is_the_full_states_cells_and_keys", test_the_icons_state_is_the_full_states_cells_and_keys, 0 },
   { "grid_names_and_labels", test_grid_names_and_labels, 0 },
+  { "the_songs_follow_the_items_in_two_rows_of_six", test_the_songs_follow_the_items_in_two_rows_of_six, 0 },
+  { "the_panel_fits_the_screen_with_the_songs", test_the_panel_fits_the_screen_with_the_songs, 0 },
+  { "the_postcard_fits_the_screen_at_each_size", test_the_postcard_fits_the_screen_at_each_size, 0 },
   { "text_helpers", test_text_helpers, 0 },
   { "icons_index_reads_every_entry", test_icons_index_reads_every_entry, 0 },
   { "icons_index_refuses_damage", test_icons_index_refuses_damage, 0 },

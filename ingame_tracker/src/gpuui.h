@@ -45,7 +45,7 @@ float gpuui_glyph_shadowed(gf_face_t face, int em, uint32_t codepoint, float x, 
 /* The items' icons: the game's pictures (ASTC 4x4, in its packaged block-linear layout), each shrunk once on
  * the GPU into a slot of an icon atlas (RGBA16F, premultiplied), so that only one picture's bytes are ever
  * held. */
-#define GPUUI_ICONS 40
+#define GPUUI_ICONS 56
 typedef struct {
   int width, height;
   size_t size;

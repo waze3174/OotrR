@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import struct
 import tempfile
@@ -12,7 +13,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from oot_rando.game.tracking_metadata import inventory_rules
+from oot_rando.game.tracking_metadata import GAMEDATA, SONGS, inventory_rules
 from oot_rando.patching.soul_adapter import murmur3
 from oot_rando.randomizer.randomizer_core import Settings, generate
 from oot_rando.randomizer.randomizer_services import (_key_actors, generate_in_mods, read_artifact,
@@ -20,6 +21,7 @@ from oot_rando.randomizer.randomizer_services import (_key_actors, generate_in_m
 from oot_rando.__main__ import main as command_line
 from oot_rando.paths import resource
 from oot_rando.tracker import ingame_bundle, ingame_format as fmt, ingame_icons
+from oot_rando.tracker.game_overlay import GRID
 from oot_rando.tracker.check_labels import check_labels
 from test_randomizer_services import ServiceTests
 
@@ -205,6 +207,20 @@ class ExportTests(unittest.TestCase):
         self.assertEqual(rules, [lens, {'item': 'Fire Arrows', 'hash': str(murmur3('IsGet.Item_Arrow_Fire')), 'count': 1}])
         self.assertEqual(inventory_rules(None, known=set()), [])
 
+    def test_songs_come_with_every_seed_in_the_trackers_order(self):
+        # No seed lists the songs (they are learned in cutscenes), so the exporter adds them, to older seeds too.
+        manifest, checks, tracking = synthetic_seed()
+        items = fmt.parse(ingame_bundle.seed_file(manifest, checks, tracking))['items']
+        songs = [(name, rules) for name, rules in items if name in dict(SONGS)]
+        self.assertEqual(songs, [(item, [(murmur3('IsGet.' + flag), 1)]) for item, flag in SONGS])
+        self.assertEqual(len(songs), 12)
+        self.assertEqual(len({name for name, _ in items}), len(items))   # none twice
+
+    def test_songs_only_for_the_flags_the_game_saves(self):
+        lullaby = murmur3('IsGet.Item_Melody_ZeldaLullaby')
+        self.assertEqual(inventory_rules(None, known={lullaby}),
+                         [{'item': 'Zeldas Lullaby', 'hash': str(lullaby), 'count': 1}])
+
     def test_dungeon_keys(self):
         keys = fmt.parse(ingame_bundle.seed_file(*synthetic_seed()))['keys']
         self.assertEqual(keys[0], {'name': 'Forest Temple', 'flags': fmt.KEY_SMALL | fmt.KEY_BOSS | fmt.KEY_BOSS_ALL,
@@ -386,6 +402,25 @@ class IconTests(unittest.TestCase):
         self.assertIn(('Megaton Hammer', 'Item_Hammer_PouchIcon'), icons)
         self.assertIn(('Forest Medallion', 'DataFileImportantIcon_04'), icons)
         self.assertEqual(len({item for item, _ in icons}), len(icons))
+
+    def test_the_songs_come_after_the_items_in_the_modules_order_and_before_the_keys(self):
+        grid = (REPOSITORY / 'ingame_tracker' / 'src' / 'grid.c').read_text(encoding='utf-8')
+        cells = re.findall(r'\{ "([^"]+)", "[^"]+", \d, \w+ \}', grid)
+        items = [item for row in GRID for item, *_ in row]
+        self.assertEqual(cells, items + [item for item, _ in SONGS])
+        icons = ingame_icons.grid_icons()
+        songs = [item for item, _ in SONGS]
+        at = [item for item, _ in icons].index(songs[0])
+        self.assertEqual(icons[at:at + 12], [(item, ingame_icons.LAYOUT_PICTURES[item]) for item in songs])
+        self.assertEqual(icons[at + 12:], ingame_icons.KEY_ICONS)
+        self.assertLessEqual(len(icons), ingame_icons.MAX_ICONS)
+
+    def test_the_songs_pictures_are_the_melody_lists_in_the_order_of_the_games_scores(self):
+        self.assertEqual(sorted(ingame_icons.MELODY_ORDER), sorted(item for item, _ in SONGS))
+        self.assertEqual(ingame_icons.LAYOUT_PICTURES['Zeldas Lullaby'], 'OcarinaMelodyIcon_00')
+        self.assertEqual(ingame_icons.LAYOUT_PICTURES['Song of Storms'], 'OcarinaMelodyIcon_05')
+        self.assertEqual(ingame_icons.LAYOUT_PICTURES['Prelude of Light'], 'OcarinaMelodyIcon_11')
+        self.assertEqual(len(set(ingame_icons.LAYOUT_PICTURES.values())), len(ingame_icons.LAYOUT_PICTURES))
 
     def test_pictures_are_taken_from_an_archive_of_many(self):
         archive = synthetic_archive([('A', bytes([1]) * 64, 0x2D01), ('B', bytes([2]) * 64, 0x2D06),
@@ -606,6 +641,13 @@ class UpdateTests(unittest.TestCase):
         keys = fmt.parse((root / 'romfs' / ingame_bundle.SEED_FILE).read_bytes())['keys']
         self.assertEqual(keys[0]['boss'], murmur3('IsGet.Item_BossKey_ForestTemple'))
 
+    def test_an_older_seed_gets_the_songs(self):
+        root = self.installed_seed()
+        update_ingame_tracker(root)
+        items = dict(fmt.parse((root / 'romfs' / ingame_bundle.SEED_FILE).read_bytes())['items'])
+        for item, flag in SONGS:
+            self.assertEqual(items[item], [(murmur3('IsGet.' + flag), 1)])
+
     def test_a_second_update_changes_nothing(self):
         root = self.installed_seed()
         update_ingame_tracker(root)
@@ -699,6 +741,29 @@ class UpdateTests(unittest.TestCase):
             self.assertIn(expected, output.getvalue())
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(command_line(['update-tracker', str(self.mods / 'missing')]), 1)
+
+
+@unittest.skipUnless(NUP, 'OOT_NUP absent')
+class SongsInTheGameTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from oot_rando.formats.inspect_nup import Nup
+        cls.nup = Nup(NUP)
+        cls.addClassCleanup(cls.nup.stream.close)
+
+    def test_every_song_flag_is_a_bool_the_game_saves(self):
+        from oot_rando.formats.inspect_resources import Byml, decompress, dictionaries
+        raw = decompress(self.nup.read(self.nup.latest('romfs/' + GAMEDATA)), dictionaries(self.nup))
+        saved = {int(entry['Hash']) for entry in Byml(raw).root['Data']['Bool']
+                 if entry.get('SaveFileIndex') == 0 and 'Hash' in entry}
+        for item, flag in SONGS:
+            self.assertIn(murmur3('IsGet.' + flag), saved, item)
+
+    def test_the_game_has_a_picture_for_every_song(self):
+        icons = dict(ingame_icons.parse(ingame_icons.nup_icons(self.nup)))
+        for item, _ in SONGS:
+            self.assertEqual((icons[item]['width'], icons[item]['height'], icons[item]['format']), (107, 107, 0x2D06), item)
+            self.assertEqual(icons[item]['swizzle'], bytes([2, 2, 2, 5]), item)   # grey with an alpha channel
 
 
 @unittest.skipUnless(NUP, 'OOT_NUP absent')

@@ -54,7 +54,7 @@ void free(void *p);                             /* from main */
 #define MAX_DESCRIPTOR_SIZE 256
 #define ICON_PX 64            /* an icon's slot in the icon atlas */
 #define ICON_COLS 8
-#define ICON_ROWS 5           /* 512 x 320, RGBA16F: 1.25 MiB */
+#define ICON_ROWS 7           /* 512 x 448, RGBA16F: 1.75 MiB */
 #define ICONS_W (ICON_PX * ICON_COLS)
 #define ICONS_H (ICON_PX * ICON_ROWS)
 _Static_assert(ICON_COLS * ICON_ROWS >= GPUUI_ICONS, "a slot for each icon");

@@ -61,7 +61,10 @@ A key the game doesn't have is `GD_UNKNOWN`, never false: an unknown check isn't
 `tracker_state_t`; the PC tests use a table in place of the game. It does what the desktop tracker does:
 
 - an item's level is the highest of its rules whose Bool is set (owned); it is missing when the game knows a flag but none is set, and
-  unknown when it knows none. Items named `Soul (...)` are counted as souls, the others are looked up in `grid.c`'s rows;
+  unknown when it knows none. Items named `Soul (...)` are counted as souls, the others are looked up in `grid.c`'s cells: the 36 items
+  in four rows of nine, then the 12 ocarina songs. A song is an item of one rule, the game's `IsGet.Item_Melody_<name>` Bool, which the
+  exporter adds to every seed (`tracking_metadata.SONGS`); a seed file made before that has none, so its songs are unknown (`?`) until
+  `update-tracker`;
 - a region's count is its checks whose flag is set, out of its checks;
 - small keys found = the larger of keys found and keys held, or all of them with a key ring applied; the boss key is its Bool;
 - the save is of this seed when the seed marker reads true, and of another when it reads false.
@@ -99,15 +102,15 @@ RomFS through `gamefile.c` the first time the panel is opened (a pause), rasteri
 per quad (a glyph or a rectangle), blended over the picture just before the game's present, with no read-back. The sizes are
 sloperinaGZ's: a font pixel is a 360th of the picture's height, so the panel scales with the resolution (560 font pixels wide: 1,680 pixels
 at 1080p, 1,120 at 720p). Top to bottom: title and seed id; status lines (not this seed's save, goal reached); the items, 4 rows of 9, as
-their icons (below) or else their letters (owned: lit in the item's colour, with its level; missing and unknown: dim); the dungeons' keys; the checks' total and the souls; the regions in
+their icons (below) or else their letters (owned: lit in the item's colour, with its level; missing and unknown: dim), and under them the 12 songs in two rows of six, drawn the same way across the box's width; the dungeons' keys; the checks' total and the souls; the regions in
 three columns, each `collected/trackable` (green when all, dim when none), the highlighted one on a gold band; a line of hints. With a
 region's list open, the grid and the regions give way to the region's name, its count and which checks are shown, then up to 18 checks:
 a filled green box and a green name when collected, an empty white box and a white name when missing, a dim question mark when the game
 doesn't have the flag.
 
-Quad budget: ocarinaMIDI draws at most 512 quads (a short list). This panel's text is about 1,000 quads at most (35 regions, 36 cells), so
+Quad budget: ocarinaMIDI draws at most 512 quads (a short list). This panel's text is about 1,050 quads at most (35 regions, 48 cells), so
 `MAX_QUADS` in `gpuui.c` is 1,536, the command memory per slot (`overlay.c`) 0x40000 (sloperinaGZ's own size) and the elements 2 x 1,536 x
-256 bytes. Over the budget the rest of the frame is left out, with a log line, not a crash. The icons add at most 60 quads (36 cells and
+256 bytes. Over the budget the rest of the frame is left out, with a log line, not a crash. The icons add at most 72 quads (48 cells and
 three per dungeon in the keys row, which then draws fewer letters), and shrinking a picture has its own 36 elements per slot.
 
 ## The items' icons
@@ -119,9 +122,9 @@ ASTC 4x4 texture with that packaged layout (`nvnTextureBuilderSetPackagedTexture
 master 5287f64) makes textures of the game's controller pictures; sloperinaGZ decodes its icons on the CPU instead (`astc.c`). They are
 sampled as unorm whatever the BNTX says, as sloperinaGZ's `gameimage.c` does: no sRGB decode, like everything else the panel draws.
 
-The pictures are large (up to 704 KB each, about 7.3 MB for the 38) and the game's heap has little to spare (sloperinaGZ's NATIVE_UI.md and
+The pictures are large (up to 704 KB each, about 7.3 MB for the first 38; the songs' are 14 KB each) and the game's heap has little to spare (sloperinaGZ's NATIVE_UI.md and
 FINDINGS.md: it refused allocations past about 10 to 11 MB), so they are not kept. Each is shrunk once, on the GPU, into a 64-pixel slot
-of an icon atlas (512 x 320, 40 slots, RGBA16F: 1.25 MiB, kept; the 38 icons of the game of 13/11 use 38), and only one picture's bytes
+of an icon atlas (512 x 448, 56 slots, RGBA16F: 1.75 MiB, kept; the game of 13/11 gives 38 icons, the 12 songs make 50), and only one picture's bytes
 are held at a time (688 KiB at most, freed once they are in):
 
 1. The first frame the panel is drawn (`trackerui.c`, `icons_start`), the file's header and index are read and checked (`iconfile.c`), the
@@ -135,15 +138,28 @@ are held at a time (688 KiB at most, freed once they are in):
 
 A cell's icon is a square as tall as the cell, in its middle, drawn with premultiplied blending: at full strength when the item is owned,
 dimmed when it is missing, fainter still when it is unknown (the game has none of its flags), which also gets a small `?` at the cell's
-right. The stones and medallions use the file select's pictures (`DataFileImportantIcon_00` to `_08`). In the keys row each temple is
+right. The stones and medallions use the file select's pictures (`DataFileImportantIcon_00` to `_08`). The songs use the ocarina's
+melody list's (`OcarinaMelodyIcon_00` to `_11` of the same archive: 107 pixels, ASTC 4x4 sRGB, swizzled to grey with an alpha channel, so they
+are drawn white on the song's coloured cell), numbered as the game's melody scores list the songs (Zelda's Lullaby first,
+Epona's, Saria's, Sun's, Time, Storms, then the six warp songs; the 13th, `_12`, is the scarecrow's, unused). That the numbering is the
+melody list's is read from the game's data (13 buttons for 12 scores and the scarecrow), not yet seen in the game. In the keys row each temple is
 labelled by its medallion's icon (Bottom of the Well, Gerudo Training Ground and Ganon's Castle, which have none, keep their letters),
 then the small key's icon and `found/total`, then the boss key's icon, dimmed until it is held; without the icons, the letters and a `B`
 as before. The atlas is a render target, so its rows run the window's way up: with the lower-left origin it is
 sampled upside down, as sloperinaGZ samples its layer.
 
+## Sizes
+
+`sizes.c` holds every size that decides the height of the panel or the card, in font pixels, so the host tests can check that they
+fit. Under the title the panel is the items' four rows of 18, a gap of 2, the songs' two rows of 14 (each cell a sixth of the box's inner width), then
+the keys, the summary and the regions in three columns of 10 per row. At 35 regions it is 326 font pixels tall, 350 with the most status
+lines (2); the picture is 360 high and the panel starts 8 down, so 352 is the most. (The songs' rows took the room by making the items'
+rows 18 instead of 20, the regions' 10 instead of 11 and the gaps between sections 6 instead of 8.) The postcard at full size is 208 wide and
+157 tall with eight dungeons' keys (112 with none), times 0.55, 0.75 or 1.0.
+
 ## The postcard
 
-A small card with the items' grid and the dungeons' keys, drawn in a corner while the panel is closed. Its parts:
+A small card with the items' grid, the songs under it and the dungeons' keys, drawn in a corner while the panel is closed. Its parts:
 
 - `postcard.c` is pure: the four settings (on, position, size, opacity), their values and text, stepping through them,
   the card's corner (`postcard_origin`), and the settings file's text (`postcard_format`, `postcard_parse`: `name=number` lines,
@@ -156,12 +172,12 @@ A small card with the items' grid and the dungeons' keys, drawn in a corner whil
   place of a count. A opens `BROWSE_POSTCARD`: four rows (`browse_t.setting`); up and down move, left and right change the value
   (`app.c` calls `postcard_step`), B goes back. That page is a narrower panel (320 font pixels).
 - With the card on and the panel closed, `app_frame` publishes a `panel_t` with `menu` false twice a second, filled by
-  `tracker_compute_icons` (items and keys only: not the 1,500 region flags), and the present hook draws the card from it every frame.
+  `tracker_compute_icons` (items, songs and keys only: not the 1,500 region flags), and the present hook draws the card from it every frame.
   While the settings page is open the card is drawn as a preview: the panel is drawn first, then the card
   over its corner, so a change is seen at once. On the regions and a region's list the card is hidden.
 - Drawing (`trackerui.c`): `layout_scaled` gives the fonts and hairline for a font pixel of any size, so the card is the panel's
   own `draw_grid` and `draw_keys` at the card's scale (`postcard_scale` of the picture's font pixel: 0.55, 0.75 or 1.0 of the full-size
-  card, 22 x 20 font-pixel cells, so the icons are nearly square) with the keys in 3 columns. The opacity is `gpuui_set_opacity`: each
+  card, items in 22 x 18 font-pixel cells, so the icons are nearly square, the songs in cells a sixth of the card's width and 14 tall) with the keys in 3 columns. The opacity is `gpuui_set_opacity`: each
   quad records the frame's opacity, and `write_element` multiplies its alpha by it (and a premultiplied icon's colour too), so
   the box, the glyphs and the icons fade together. Quads overlap as they do at full opacity (text over a fainter box), so it reads as one
   translucent card, not a flattened image.

@@ -1,62 +1,44 @@
 /* The tracker panel in the game's own style (see trackerui.h). The box, the gold title over a hairline and
  * the type are sloperinaGZ's menu in its game style, at its sizes: a font pixel is a 360th of the picture's
- * height (3 pixels at 1080p). The sections follow OotrR's overlay: the items in rows (their icons, from the
- * seed's icons.bin, once they're in; their letters until then or without it), the dungeons' keys, the
- * checks found by region, one of them highlighted; or, with a region's list open, its checks. The postcard is
- * the items and the keys alone, as a smaller card in a corner, drawn with the same code. */
+ * height (3 pixels at 1080p). The sections follow OotrR's overlay: the items in rows and the ocarina songs under
+ * them (their icons, from the seed's icons.bin, once they're in; their letters until then or without it), the
+ * dungeons' keys, the checks found by region, one of them highlighted; or, with a region's list open, its checks.
+ * The postcard is the items, the songs and the keys alone, as a smaller card in a corner, drawn with the same
+ * code. */
 #include "trackerui.h"
 
 #include "gamefile.h"
 #include "gamefont.h"
 #include "gpuui.h"
 #include "iconfile.h"
+#include "sizes.h"
 #include "slots.h"
 #include "sys.h"
 #include "text.h"
 #include "uishader.h"
 #include "uitext.h"
 
-#define PICTURE_LINES_PER_FP 360.0f
 #define MIN_LINE_PX          1.0f
 #define LINE_FP              0.5f /* a hairline's thickness */
 
-/* sizes in font pixels (fp) */
-#define MARGIN_FP         8
-#define PANEL_WIDTH_FP    560
+/* sizes in font pixels (fp) that don't decide the box's size (those are sizes.h's) */
 #define PAD_X_FP          14
-#define PAD_Y_FP          12
-#define TITLE_ROW_FP      15
 #define TITLE_TEXT_FP     11
-#define TITLE_GAP_FP      9
 #define TITLE_RULE_AT     0.42f /* of the gap under the title row */
 #define BODY_TEXT_FP      8
-#define STATUS_ROW_FP     12
-#define SECTION_GAP_FP    8
-#define GRID_ROW_FP       20
 #define CELL_GAP_FP       2
 #define CELL_LEVEL_PAD_FP 3
-#define KEYS_ROW_FP       13
 #define KEY_ICON_FP       11   /* the keys row's icons */
 #define KEY_ICON_GAP_FP   2    /* between the small key's icon and its count */
-#define SUMMARY_ROW_FP    13
-#define REGION_ROW_FP     11
 #define REGION_COLUMNS    BROWSE_REGION_COLUMNS
 #define REGION_COLUMN_GAP_FP 12
 #define REGION_NAME_GAP_FP   4 /* between a region's name and its count */
 #define HIGHLIGHT_PAD_FP  3    /* the highlight band reaches this far left and right of its row */
 #define HIGHLIGHT_BAR_FP  1    /* its gold edge on the left */
-#define HINT_ROW_FP       12
-#define LIST_HEAD_ROW_FP  14
-#define LIST_ROW_FP       11
 #define TICK_BOX_FP       5    /* a check's box */
 #define TICK_GAP_FP       5    /* between the box and the name */
 #define TICK_LINE_FP      0.6f /* an empty box's outline */
-#define POSTCARD_PANEL_WIDTH_FP 320 /* the panel showing the postcard's settings */
-#define SETTING_ROW_FP    14
 #define SETTING_VALUE_AT_FP 90 /* a setting's value, from the panel's inner edge */
-#define CARD_CELL_W_FP    22   /* the postcard at full size: item cells this wide, so the icons are nearly square */
-#define CARD_PAD_FP       5
-#define CARD_KEY_COLUMNS  3
 
 /* opacities */
 #define BOX_OPACITY        0.86f
@@ -66,7 +48,6 @@
 #define CELL_UNKNOWN_ALPHA 0.04f
 #define HIGHLIGHT_ALPHA    0.16f
 
-#define MAX_STATUS_LINES 2
 #define STATUS_ROOM      80
 #define NAME_ROOM        64
 #define ELLIPSIS         ".."
@@ -207,14 +188,12 @@ typedef struct {
 
 typedef struct {
   status_line_t status[MAX_STATUS_LINES];
-  int status_count;
-  bool tracking, has_keys, has_summary, list, postcard_page;
-  int region_rows;
+  panel_shape_t shape;
 } content_t;
 
 static void add_status(content_t *content, const char *text, const rgb_t *colour)
 {
-  status_line_t *line = &content->status[content->status_count++];
+  status_line_t *line = &content->status[content->shape.status_lines++];
   text_copy(line->text, sizeof(line->text), text);
   line->colour = colour;
 }
@@ -231,20 +210,21 @@ static void add_tracking_status(content_t *content, const tracker_state_t *state
 
 static content_t content_of(const panel_t *panel)
 {
-  content_t content = { .tracking = panel->mode == PANEL_TRACKING };
+  content_t content = { .shape = { .tracking = panel->mode == PANEL_TRACKING } };
   switch (panel->mode) {
     case PANEL_UNSUPPORTED_BUILD: add_status(&content, "Game version not supported", &warning_colour); break;
     case PANEL_WAITING_FOR_GAME_DATA: add_status(&content, "Waiting for the game's save data", &dim_colour); break;
     case PANEL_TRACKING: add_tracking_status(&content, &panel->state); break;
     case PANEL_HIDDEN: break;
   }
-  if (content.tracking) {
-    content.list = panel->browse.view == BROWSE_CHECKS && panel->browse.region < panel->state.region_count;
-    content.postcard_page = panel->browse.view == BROWSE_POSTCARD;
-    bool regions = !content.list && !content.postcard_page;
-    content.has_keys = regions && panel->state.key_count > 0;
-    content.has_summary = regions;
-    content.region_rows = regions ? (int)browse_region_rows(panel->state.region_count) : 0;
+  panel_shape_t *shape = &content.shape;
+  if (shape->tracking) {
+    shape->list = panel->browse.view == BROWSE_CHECKS && panel->browse.region < panel->state.region_count;
+    shape->postcard_page = panel->browse.view == BROWSE_POSTCARD;
+    bool regions = !shape->list && !shape->postcard_page;
+    shape->has_keys = regions && panel->state.key_count > 0;
+    shape->has_summary = regions;
+    shape->region_rows = regions ? browse_region_rows(panel->state.region_count) : 0;
   }
   return content;
 }
@@ -259,22 +239,6 @@ typedef struct {
   float inner_x, inner_w;
 } layout_t;
 
-static float content_height_fp(const content_t *content)
-{
-  float h = 2 * PAD_Y_FP + TITLE_ROW_FP + TITLE_GAP_FP + content->status_count * STATUS_ROW_FP;
-  if (content->list)
-    return h + LIST_HEAD_ROW_FP + BROWSE_CHECK_ROWS * LIST_ROW_FP + SECTION_GAP_FP + HINT_ROW_FP;
-  if (content->postcard_page)
-    return h + LIST_HEAD_ROW_FP + POSTCARD_SETTING_COUNT * SETTING_ROW_FP + SECTION_GAP_FP + HINT_ROW_FP;
-  if (content->tracking)
-    h += GRID_ROWS * GRID_ROW_FP + SECTION_GAP_FP + HINT_ROW_FP;
-  if (content->has_keys)
-    h += KEYS_ROW_FP + SECTION_GAP_FP;
-  if (content->has_summary)
-    h += SUMMARY_ROW_FP + SECTION_GAP_FP;
-  return h + content->region_rows * REGION_ROW_FP;
-}
-
 /* the fonts and the hairline for a font pixel of `fp` screen pixels; the box is the caller's */
 static layout_t layout_scaled(float fp)
 {
@@ -288,16 +252,16 @@ static layout_t layout_scaled(float fp)
 
 static float picture_fp(nvn_rect_t area)
 {
-  return area.h / PICTURE_LINES_PER_FP;
+  return area.h / PICTURE_HEIGHT_FP;
 }
 
 static layout_t layout_for(const content_t *content, nvn_rect_t area)
 {
   layout_t l = layout_scaled(picture_fp(area));
   float room = area.w - 2 * MARGIN_FP * l.fp;
-  float width = (content->postcard_page ? POSTCARD_PANEL_WIDTH_FP : PANEL_WIDTH_FP) * l.fp;
+  float width = sizes_panel_width(&content->shape) * l.fp;
   l.w = width < room ? width : room;
-  l.h = content_height_fp(content) * l.fp;
+  l.h = sizes_panel_height(&content->shape) * l.fp;
   l.x = (float)(int)((area.w - l.w) / 2);
   l.y = (float)(int)(MARGIN_FP * l.fp);
   l.inner_x = l.x + PAD_X_FP * l.fp;
@@ -326,7 +290,7 @@ static float draw_header(const layout_t *l, const panel_t *panel, float y)
 static float draw_status(const layout_t *l, const content_t *content, float y)
 {
   float row = STATUS_ROW_FP * l->fp;
-  for (int i = 0; i < content->status_count; i++) {
+  for (int i = 0; i < content->shape.status_lines; i++) {
     draw_text(&l->bold, content->status[i].text, l->inner_x, baseline_in(&l->bold, y, row), *content->status[i].colour);
     y += row;
   }
@@ -367,14 +331,24 @@ static void draw_cell(const layout_t *l, int index, cell_state_t state, float x,
   }
 }
 
+/* `count` cells from `first`, `columns` to a row of `row_fp`, across the box's inner width; returns where they end */
+static float draw_cells(const layout_t *l, const tracker_state_t *state, int first, int count, int columns,
+                        float row_fp, float y)
+{
+  float cell_w = l->inner_w / columns, row = row_fp * l->fp, gap = CELL_GAP_FP * l->fp;
+  for (int i = 0; i < count; i++) {
+    float x = l->inner_x + (i % columns) * cell_w, top = y + (i / columns) * row;
+    draw_cell(l, first + i, state->cells[first + i], x + gap / 2, top + gap / 2, cell_w - gap, row - gap);
+  }
+  return y + (count / columns) * row;
+}
+
+/* the items in their rows, the songs in theirs under them */
 static float draw_grid(const layout_t *l, const tracker_state_t *state, float y)
 {
-  float cell_w = l->inner_w / GRID_COLUMNS, row = GRID_ROW_FP * l->fp, gap = CELL_GAP_FP * l->fp;
-  for (int i = 0; i < GRID_CELLS; i++) {
-    float x = l->inner_x + (i % GRID_COLUMNS) * cell_w, top = y + (i / GRID_COLUMNS) * row;
-    draw_cell(l, i, state->cells[i], x + gap / 2, top + gap / 2, cell_w - gap, row - gap);
-  }
-  return y + GRID_ROWS * row + SECTION_GAP_FP * l->fp;
+  y = draw_cells(l, state, 0, ITEM_CELLS, GRID_COLUMNS, GRID_ROW_FP, y) + SONGS_GAP_FP * l->fp;
+  y = draw_cells(l, state, ITEM_CELLS, SONG_CELLS, SONG_COLUMNS, SONG_ROW_FP, y);
+  return y + SECTION_GAP_FP * l->fp;
 }
 
 /* a dungeon's keys: its medallion's icon (else its letters), the small key's icon and the keys found, then the boss
@@ -409,18 +383,13 @@ static void draw_dungeon_keys(const layout_t *l, const dungeon_keys_t *keys, flo
     draw_text(&l->bold, "B", x, baseline, held ? white : faint_colour);
 }
 
-static uint32_t key_rows(const tracker_state_t *state, uint32_t columns)
-{
-  return (state->key_count + columns - 1) / columns;
-}
-
 /* the dungeons' keys, `columns` to a row, filled left to right */
 static float draw_keys(const layout_t *l, const tracker_state_t *state, float y, uint32_t columns)
 {
   float row = KEYS_ROW_FP * l->fp, column_w = l->inner_w / (float)columns;
   for (uint32_t i = 0; i < state->key_count; i++)
     draw_dungeon_keys(l, &state->keys[i], l->inner_x + (i % columns) * column_w, y + (i / columns) * row, row);
-  return y + key_rows(state, columns) * row + SECTION_GAP_FP * l->fp;
+  return y + sizes_key_rows(state->key_count, columns) * row + SECTION_GAP_FP * l->fp;
 }
 
 static float draw_summary(const layout_t *l, const tracker_state_t *state, float y)
@@ -595,39 +564,40 @@ static float draw_list(const layout_t *l, const panel_t *panel, float y)
 static void draw_panel(const panel_t *panel, nvn_rect_t area)
 {
   content_t content = content_of(panel);
+  const panel_shape_t *shape = &content.shape;
   layout_t l = layout_for(&content, area);
   gpuui_fill(l.x, l.y, l.w, l.h, to_gpu(box_colour, BOX_OPACITY));
   float y = draw_header(&l, panel, l.y + PAD_Y_FP * l.fp);
   y = draw_status(&l, &content, y);
-  if (!content.tracking)
+  if (!shape->tracking)
     return;
-  if (content.postcard_page) {
+  if (shape->postcard_page) {
     draw_hint(&l, HINT_POSTCARD, draw_postcard_page(&l, panel, y));
     return;
   }
-  if (content.list) {
+  if (shape->list) {
     y = draw_list(&l, panel, draw_list_heading(&l, panel, y));
     draw_hint(&l, HINT_LIST, y);
     return;
   }
   y = draw_grid(&l, &panel->state, y);
-  if (content.has_keys)
+  if (shape->has_keys)
     y = draw_keys(&l, &panel->state, y, panel->state.key_count);
   y = draw_summary(&l, &panel->state, y);
-  draw_hint(&l, HINT_REGIONS, draw_regions(&l, panel, content.region_rows, y));
+  draw_hint(&l, HINT_REGIONS, draw_regions(&l, panel, (int)shape->region_rows, y));
 }
 
 /* --- the postcard --------------------------------------------------------------------------------- */
 
-/* the card's box in the corner its settings choose, at its size: the grid's cells CARD_CELL_W_FP wide and the keys
- * in CARD_KEY_COLUMNS columns under them, all at the card's own scale of the picture's font pixel */
+/* the card's box in the corner its settings choose, at its size: the items' cells CARD_CELL_W_FP wide, the songs
+ * across the same width and the keys in CARD_KEY_COLUMNS columns under them, all at the card's own scale of the
+ * picture's font pixel */
 static layout_t card_layout(const postcard_settings_t *settings, const tracker_state_t *state, nvn_rect_t area)
 {
   layout_t l = layout_scaled(picture_fp(area) * postcard_scale(settings));
-  uint32_t rows = key_rows(state, CARD_KEY_COLUMNS);
-  l.inner_w = GRID_COLUMNS * CARD_CELL_W_FP * l.fp;
-  l.w = l.inner_w + 2 * CARD_PAD_FP * l.fp;
-  l.h = (2 * CARD_PAD_FP + GRID_ROWS * GRID_ROW_FP + (rows ? SECTION_GAP_FP + rows * KEYS_ROW_FP : 0)) * l.fp;
+  l.w = sizes_card_width() * l.fp;
+  l.inner_w = l.w - 2 * CARD_PAD_FP * l.fp;
+  l.h = sizes_card_height(state->key_count) * l.fp;
   postcard_origin((postcard_position_t)settings->position, area.w, area.h, l.w, l.h, MARGIN_FP * picture_fp(area),
                   &l.x, &l.y);
   l.x = (float)(int)l.x;

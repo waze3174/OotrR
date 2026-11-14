@@ -1,7 +1,7 @@
 """The items' icons for the in-game tracker (``romfs/RandoTracker/icons.bin``), from the player's own game.
 
 Each icon is the game's own picture (RomFS ``UI/Tex/Icon/<name>.bntx.zs``; for the spiritual stones and the
-medallions, the file select's, in its common layout archive) copied as the BNTX stores it: ASTC 4x4 blocks in
+medallions, the file select's; for the songs, the ocarina's melody list's; both in its common layout archive) copied as the BNTX stores it: ASTC 4x4 blocks in
 the GPU's block-linear layout, with that layout's description. Nothing is decoded here;
 the module makes GPU textures of the bytes. Nothing of the game ships with the application: the file is
 written on the player's PC, from their game, into their seed. Format: docs/ingame-tracker-format.md.
@@ -10,6 +10,7 @@ import struct
 
 import zstandard
 
+from oot_rando.game.tracking_metadata import SONGS
 from oot_rando.tracker.game_overlay import GRID, ICONS
 
 ICON_FILE = 'RandoTracker/icons.bin'
@@ -17,7 +18,7 @@ MAGIC, VERSION = b'RTIC', 1
 HEADER = struct.Struct('<4sHHIIIIII')   # 32 bytes
 ENTRY = struct.Struct('<32sIIII8s4sI')  # 64 bytes
 NAME_ROOM = 32
-MAX_ICONS = 40                          # the module's icon atlas
+MAX_ICONS = 56                          # the module's icon atlas: 8 x 7 slots
 MAX_SIZE = 4 << 20                      # one picture's most bytes (the module's staging memory)
 MAX_SIDE = 4096
 DATA_ALIGN = 16
@@ -25,14 +26,19 @@ ASTC_4X4 = (0x2D01, 0x2D06)             # BNTX: ASTC 4x4 unorm, sRGB
 # A smaller picture of the same item, where the usual one is much larger (Item_Hammer is 1440 px, this 683).
 SMALLER = {'Megaton Hammer': 'Item_Hammer_PouchIcon'}
 # The spiritual stones and the medallions have no icon (the pause menu shows their models): the file select's
-# pictures of them, in the common layout archive, stand in.
+# pictures of them, in the common layout archive, stand in. The songs' pictures are the ocarina's melody list's
+# (OcarinaMelodyIcon_NN, grey glyphs with an alpha channel), numbered as the game's melody scores list the songs.
 LAYOUT_ARCHIVE = 'UI/Layout2Archive/Common.Product.100.Nin_Ounce_NVN2.bntx.zs'
+MELODY_ORDER = ('Zeldas Lullaby', 'Eponas Song', 'Sarias Song', 'Suns Song', 'Song of Time', 'Song of Storms',
+                'Minuet of Forest', 'Bolero of Fire', 'Serenade of Water', 'Requiem of Spirit', 'Nocturne of Shadow',
+                'Prelude of Light')
 LAYOUT_PICTURES = {
     'Kokiri Emerald': 'DataFileImportantIcon_00', 'Goron Ruby': 'DataFileImportantIcon_01',
     'Zora Sapphire': 'DataFileImportantIcon_02', 'Light Medallion': 'DataFileImportantIcon_03',
     'Forest Medallion': 'DataFileImportantIcon_04', 'Fire Medallion': 'DataFileImportantIcon_05',
     'Water Medallion': 'DataFileImportantIcon_06', 'Spirit Medallion': 'DataFileImportantIcon_07',
     'Shadow Medallion': 'DataFileImportantIcon_08',
+    **{song: 'OcarinaMelodyIcon_%02d' % number for number, song in enumerate(MELODY_ORDER)},
 }
 # The dungeons' keys, for the panel's key row (named as the module looks them up; not grid items).
 KEY_ICONS = [('Small Key', 'Item_Dungeon_SmallKey'), ('Boss Key', 'Item_Dungeon_BossKey')]
@@ -41,7 +47,7 @@ MAX_HEADER = 8 << 20                    # an archive's header (its texture recor
 
 def grid_icons():
     """(item, picture name) of each picture the panel uses: the grid's items that have one, in the grid's
-    order, then the keys."""
+    order, then the songs, then the keys."""
     icons = []
     for row in GRID:
         for item, *_ in row:
@@ -49,7 +55,7 @@ def grid_icons():
                 icons.append((item, LAYOUT_PICTURES[item]))
             elif item in ICONS:
                 icons.append((item, SMALLER.get(item, ICONS[item][0])))
-    return icons + KEY_ICONS
+    return icons + [(song, LAYOUT_PICTURES[song]) for song, _ in SONGS] + KEY_ICONS
 
 
 def _record(data, at, data_from=0):

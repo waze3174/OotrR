@@ -1,6 +1,6 @@
 # Live test plan
 
-Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 and 2), the state, a
+Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.4.0 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 and 2), the state, a
 region's list of checks, the game-data reader over a fake GameData, the controls (repeat, what the game doesn't see), the browsing and the
 icons file's index.
 These steps cover the rest. Back up the save first.
@@ -48,7 +48,7 @@ R3 + D-pad).
 With a seed this version made from your game (or one updated with `update-tracker --nup GAME.nup`), so it has
 `romfs/RandoTracker/icons.bin`:
 
-- Log, at the first opening: `gpu drawing: icon atlas 512x320 (N KiB), 688 KiB for a picture while they go in` (N about 1280), then, about a second later,
+- Log, at the first opening: `gpu drawing: icon atlas 512x448 (N KiB), 688 KiB for a picture while they go in` (N about 1792), then, about a second later,
   `gpu drawing: the icons are in; the pictures' N KiB go back`, and no `didn't go in` line.
 - The cells' letters give way to the items' icons over that second (one every other frame), with no hitch.
 - The icons are upright, in their own colours (as on the game's pause screen: not washed out, not too dark), smooth (no jagged edges or
@@ -79,6 +79,28 @@ With a seed this version made from your game (or one updated with `update-tracke
   defaults` the first time); the settings come back as they were left, and the file is at `<user folder>/sdmc/ootrTracker/postcard.cfg`.
   Delete it or fill it with junk: the defaults are used, nothing crashes.
 
+## 3e. The songs (0.4.0)
+
+With a seed made or updated by 0.4.0, and `icons.bin` made from the game (`update-tracker --nup GAME.nup`):
+
+- Under the items' rows there are two rows of six cells: Minuet, Bolero, Serenade, Requiem, Nocturne, Prelude, then Zelda's Lullaby,
+  Epona's, Saria's, Sun's, Song of Time, Song of Storms. Check this is the order of the game's own song list; if the remake's
+  differs, say so.
+- A new game: all twelve are dim, none has a `?`. Learn a song (the Lullaby from Impa is the first): within half a second its cell lights
+  in its colour. Learn each of the twelve one at a time, or load a save that has some: exactly the learned ones are lit.
+  This is also the check that `IsGet.Item_Melody_<name>` is set when a song is learned (the flags exist in the game's data; that the game
+  sets them is read from its cutscenes, not seen).
+- The pictures: in the log, `the icons are in` still shows once, with 50 icons in; each song cell shows a white picture on its colour. Check each
+  picture is the right song's (the numbering is the ocarina melody list's, read from the game's data and not yet seen): a wrong one means
+  `ingame_icons.MELODY_ORDER` is off.
+- The panel with every song learned, two status lines (a save of another seed, then the goal reached) and the 35 regions fits the
+  screen at 720p and 1080p: nothing cut off at the bottom, the hint line visible; the regions' names are readable at the new, tighter
+  row height.
+- The postcard shows the songs under the items at all three sizes; each stays on the screen at 720p and 1080p in all four corners.
+- A seed installed before 0.4.0 and not updated: the song cells show their letters with a `?`, and nothing else changes. After
+  `update-tracker` the songs are tracked; its pictures need `--nup`.
+- Rename `icons.bin`: the songs show their letters (Mi, Bo, Se, Re, No, Pr, Lu, Ep, Sa, Su, ST, SS).
+
 ## 4. What it shows
 
 Pick up things and compare with the desktop tracker (Real time mode) on the same save:
@@ -86,6 +108,7 @@ Pick up things and compare with the desktop tracker (Real time mode) on the same
 - an item (a sword, a shield, a bomb bag at two levels): its cell lights with its level, within half a second of the pickup;
 - a check with a Bool flag (a chest) and one with a Bool64bitKey (a Gold Skulltula, a placed rupee): the region's count goes up;
 - a dungeon's small keys found and held, a key ring, the boss key;
+- a song learned (see 3e);
 - the goal flag, if the seed has one: "Goal reached".
 
 Count the checks: the panel's total is the desktop tracker's "automatic" count. The two differ if the Bool64bitKey reading is wrong: a seed

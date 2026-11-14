@@ -11,15 +11,16 @@ save has found:
 - the items (swords, shields, boots, bow, bombs, hookshot, magic, ocarina, bottles, stones, medallions), with the
   game's own icons, owned ones lit in their colour and with their level (Hookshot / Longshot, wallet sizes, ...),
   and a `?` on any the game has no flag for;
+- the twelve ocarina songs under them, two rows of six (the warp songs, then the others), lit once learned;
 - each dungeon's small keys found out of the total and its boss key, with the temple's medallion, the small key and
   the boss key as icons;
 - the checks found, per region and in total, as `collected / trackable` (a check without a save flag can't be
   observed, so it isn't counted), and the enemy souls if the seed has them;
 - each region's checks by name, ticked when collected, so you can see what's still missing there;
 - the seed's id, a warning when the save isn't from this seed, and "Goal reached";
-- a **postcard**: a small card with only the icons (items, temples, dungeon keys) in a corner of the screen while you play.
+- a **postcard**: a small card with only the icons (items, songs, temples, dungeon keys) in a corner of the screen while you play.
 
-Version 0.3.0. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
+Version 0.4.0. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Controls
 
@@ -49,8 +50,8 @@ The last entry of the regions is **Postcard** (On or Off). A on it opens its set
 
 Left and right change the chosen setting at once, and while the settings are shown the card is drawn so you see what they do.
 With the postcard on and the panel closed, the card is drawn in its corner every frame: the items' grid (with the stones and
-medallions) over the dungeons' keys (medallion, small keys found out of the total, boss key), with the same icons and `?` marks
-as the panel and no text lists. It takes no input and the game keeps every button. The opacity is the whole card's, its box and its
+medallions) and the songs under it, over the dungeons' keys (medallion, small keys found out of the total, boss key), with the same
+icons and `?` marks as the panel and no text lists. It takes no input and the game keeps every button. The opacity is the whole card's, its box and its
 icons. At 1080p the card is about 340 pixels wide when small, 470 medium and 620 large.
 
 The settings are saved on the SD card, in `ootrTracker/postcard.cfg` (in an emulator, `<user folder>/sdmc/ootrTracker/postcard.cfg`),
@@ -60,12 +61,13 @@ means the defaults. If the SD card can't be mounted, the settings last until the
 ## What it needs
 
 The module is shipped by the randomizer: the application copies it into each seed it generates, as `exefs/subsdk7` next to the
-seed's `romfs/RandoTracker/seed.trk` (the flags to watch, no item placements) and `icons.bin` (the items' icons, which
+seed's `romfs/RandoTracker/seed.trk` (the flags to watch, no item placements) and `icons.bin` (the items' and songs' icons, which
 OotrR copies from the player's own game on their PC; without it the items show as letters). It is therefore only active
 while that seed is enabled in the game's Properties > Add-Ons, and it does nothing if `seed.trk` is missing. To leave it
 out, turn off "In-game tracker" in OotrR's install options (or pass `--no-ingame-tracker` to `ap-install`). OotrR's
 "Update the in-game tracker" (or `update-tracker`, with `--nup GAME.nup` for the icons) puts a newer build in an
-installed seed.
+installed seed, with the songs' flags too (a seed made before 0.4.0 shows its songs as `?` until then, and as letters until
+its icons are updated with `--nup`).
 
 It reads the game's save data (GameData) in place and never writes to it or calls a game function. The only thing it writes is its
 own postcard settings file on the SD card. It knows main's

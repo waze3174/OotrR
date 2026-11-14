@@ -32,6 +32,13 @@ static const grid_cell_t cells[GRID_CELLS] = {
   { "Fire Medallion", "Fi", 1, 0xB8553A }, { "Water Medallion", "Wa", 1, 0x3A74B8 },
   { "Spirit Medallion", "Sp", 1, 0xB8923A }, { "Shadow Medallion", "Sh", 1, 0x744CA0 },
   { "Light Medallion", "Li", 1, 0xB8A83E },
+
+  { "Minuet of Forest", "Mi", 1, 0x3C8F4A }, { "Bolero of Fire", "Bo", 1, 0xB8553A },
+  { "Serenade of Water", "Se", 1, 0x3A74B8 }, { "Requiem of Spirit", "Re", 1, 0xB8923A },
+  { "Nocturne of Shadow", "No", 1, 0x744CA0 }, { "Prelude of Light", "Pr", 1, 0xB8A83E },
+  { "Zeldas Lullaby", "Lu", 1, 0xB0507A }, { "Eponas Song", "Ep", 1, 0xA8683A },
+  { "Sarias Song", "Sa", 1, 0x3C9A5C }, { "Suns Song", "Su", 1, 0xB89A3A },
+  { "Song of Time", "ST", 1, 0x4A6FB0 }, { "Song of Storms", "SS", 1, 0x6A7A8A },
 };
 
 static const struct { const char *dungeon, *abbr, *medallion; } dungeon_abbrs[] = {

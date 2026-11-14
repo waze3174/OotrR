@@ -81,17 +81,17 @@ check counts over the game window; toggle it with **Ctrl + Shift + O**.
 
 On an emulator or a Switch, every seed carries a small module that draws a tracker inside the game, in
 the game's own style: press **R + right stick up** to open it and again (or **B**) to close it. It shows the
-items (with the game's own icons and their levels), the dungeons' small keys and boss keys, the checks found per region and in total,
+items (with the game's own icons and their levels), the twelve ocarina songs, the dungeons' small keys and boss keys, the checks found per region and in total,
 the enemy souls, and a warning when the loaded save is not from this seed. The D-pad or the left stick moves
 over the regions, **A** opens a region's checks by name (ticked when collected), **B** goes back. While it is
 open the game does not see R, the right stick, A, B, the D-pad or the left stick. The last entry of the
-regions, **Postcard**, turns on a small card with only the icons (items, temples, dungeon keys) in a corner of the screen; its
+regions, **Postcard**, turns on a small card with only the icons (items, songs, temples, dungeon keys) in a corner of the screen; its
 position, size and opacity are set there and kept in a small file on the SD card. It only reads the game's
 save data; it never changes the game or the save.
 
 The seed folder gets `romfs/RandoTracker/seed.trk` (the flags to watch, no item placements; the format is in
 [docs/ingame-tracker-format.md](docs/ingame-tracker-format.md)), `exefs/subsdk7`, the module, and
-`romfs/RandoTracker/icons.bin`, the items' icons, copied from your game file as the game stores them (nothing of the
+`romfs/RandoTracker/icons.bin`, the items' and songs' icons, copied from your game file as the game stores them (nothing of the
 game ships with the application; without that file the items show as letters). They are listed in the seed's
 `manifest.json` and verified with the rest, and the module is only active while the seed
 is enabled in the game's add-ons. It is a **GPL-3** program, not covered by this project's MIT licence: its
