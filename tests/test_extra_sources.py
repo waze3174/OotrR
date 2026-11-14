@@ -16,7 +16,8 @@ from oot_rando.game.item_forms import can_take, form_actor, is_derived, is_world
 NUP = os.environ.get('OOT_NUP')
 NEW_SOURCES = {'tokensanity': 'all', 'shopsanity': '4', 'shuffle_freestanding_items': 'all',
                'shuffle_npc_gifts': True, 'shuffle_pots': 'all', 'shuffle_crates': 'all',
-               'shuffle_beehives': True, 'shuffle_bushes': True, 'shuffle_rocks': True}
+               'shuffle_beehives': True, 'shuffle_bushes': True, 'shuffle_rocks': True,
+               'shuffle_trees': True}
 
 
 class Units(unittest.TestCase):
@@ -89,6 +90,23 @@ class Units(unittest.TestCase):
         self.assertEqual(set(entries), {'HyruleField#rocks#1', 'HyruleField#pots#4'})
         self.assertEqual(entries['HyruleField#pots#4']['vanilla'], 'Rupee (1)')
 
+    def test_trees_receive_a_drop(self):
+        maps = {'Banc/HyruleField/HyruleField_Child_Static.bcett.byml.zs': {'root': {'Actors': [
+            {'Gyaml': 'Obj_Tree_A_01', 'Hash': 1},
+            {'Gyaml': 'Obj_Tree_A_01', 'Hash': 2, 'Dynamic': {'Drop__DropTable': 'None'}},
+            {'Gyaml': 'Obj_Tree_A_02', 'Hash': 3, 'Dynamic': {'Drop__DropActor': 'Obj_Rupee_Blue'}},
+            {'Gyaml': 'Obj_Tree_Tutorial_A_01', 'Hash': 4, 'Dynamic': {'DropDirRotateOffset': 65.0}},
+            {'Gyaml': 'Land_Tree_A_01', 'Hash': 5}]}}}
+        entries = scan_map_sources(maps, lambda actor, field: actor.startswith('Obj_'), lambda actor: False)
+        # Explicit "None" drop table stays vanilla; scenery trees have no drop parameter.
+        self.assertEqual(set(entries), {'HyruleField#trees#1', 'HyruleField#trees#3', 'HyruleField#trees#4'})
+        self.assertEqual((entries['HyruleField#trees#1']['vanilla'], entries['HyruleField#trees#1']['reason']),
+                         ('Rupee (1)', None))
+        self.assertEqual(entries['HyruleField#trees#3']['vanilla'], 'Rupees (5)')
+        self.assertEqual(enabled_sources({'shuffle_trees': True}).get('trees'), 'all')
+        from oot_rando.patching.repeatable_adapter import REPEATABLE
+        self.assertIn('trees', REPEATABLE)
+
     def test_category_options(self):
         values = rando_options.defaults()
         self.assertFalse(rando_options.category_checked(values, 'rocks'))
@@ -116,13 +134,14 @@ class Units(unittest.TestCase):
         npc = {l for ap, _, _, _ in NPC_GIFTS for l in ap}
         seen = set()
         for source, ap, _, sites in EVENT_GIFTS:
-            self.assertIn(source, ('boss', 'fairy', 'quest'))
+            self.assertIn(source, ('boss', 'fairy', 'quest', 'song'))
             self.assertFalse(set(ap) & (npc | seen))
             seen.update(ap)
             # Every site of one reward gives the same AP item.
             self.assertEqual(len({actor_item(actor, '') for _, _, actor in sites}), 1, ap)
         self.assertEqual(sum(s == 'boss' for s, *_ in EVENT_GIFTS), 9)
         self.assertEqual(sum(s == 'fairy' for s, *_ in EVENT_GIFTS), 6)
+        self.assertEqual(sum(s == 'song' for s, *_ in EVENT_GIFTS), 12)
         self.assertEqual(len(BOSS_HEARTS), 8)
         for category, option in (('boss_rewards', 'shuffle_boss_rewards'), ('fairies', 'shuffle_great_fairies'),
                                  ('quest_rewards', 'shuffle_quest_rewards')):

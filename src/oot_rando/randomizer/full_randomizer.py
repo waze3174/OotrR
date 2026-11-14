@@ -15,6 +15,7 @@ from oot_rando.game.remake_world import (PROGRESSIVE, BASE_REQUIRED, STATIC_TIER
 from oot_rando.game.item_forms import can_take, form_actor
 from oot_rando.game.extra_sources import match_sources, area_locations
 from oot_rando.patching.soul_adapter import plan_souls, chest_requirements, soul_label
+from oot_rando.patching.song_adapter import POSE_AFTER_CUTSCENE, is_song_actor, song_allowed
 
 FILLER_PRIORITY = ('Rupee (1)', 'Rupees (5)', 'Deku Nuts (5)', 'Deku Stick (1)', 'Arrows (5)', 'Bombs (5)',
                    'Rupees (20)', 'Arrows (10)', 'Deku Seeds (30)', 'Bombchus (5)', 'Arrows (30)',
@@ -73,9 +74,11 @@ def enabled_sources(options):
                                 ('shop', 'shopsanity', 'off'), ('pots', 'shuffle_pots', 'off'),
                                 ('crates', 'shuffle_crates', 'off'), ('beehives', 'shuffle_beehives', False),
                                 ('bushes', 'shuffle_bushes', False), ('rocks', 'shuffle_rocks', False),
+                                ('trees', 'shuffle_trees', False),
                                 ('npc', 'shuffle_npc_gifts', False), ('boss', 'shuffle_boss_rewards', False),
                                 ('bossheart', 'shuffle_boss_rewards', False), ('fairy', 'shuffle_great_fairies', False),
-                                ('quest', 'shuffle_quest_rewards', False), ('scrub', 'shuffle_scrubs', 'off')):
+                                ('quest', 'shuffle_quest_rewards', False), ('scrub', 'shuffle_scrubs', 'off'),
+                                ('song', 'shuffle_song_items', 'song')):
         value = options.get(option, off)
         if value != off:
             result[source] = value if value in ('dungeons', 'overworld') else 'all'
@@ -210,13 +213,14 @@ def prepare(data, options, groups, enemies, seed_key, open_forest=True, progress
 
     # --- key rings and dungeon-specific boss keys (key_adapter) ---------------
     from oot_rando.patching.key_adapter import RING_DUNGEONS, BOSS_KEY_DUNGEONS, ring_item, small_key_item
-    ring_folders = sorted(RING_DUNGEONS) if options['key_rings'] == 'all' else []
+    ring_folders = key_ring_folders(options, seed_key)
     ring_keys = {small_key_item(folder): ring_item(folder) for folder in ring_folders}
     specific_boss = options['shuffle_bosskeys'] in ('any_dungeon', 'keysanity')
     boss_keys = ({f'Boss Key ({FOLDER_DUNGEON[f]})' for f in BOSS_KEY_DUNGEONS} if specific_boss else set())
     # A ring counts as every small key of its dungeon (logic.bundles).
     logic.bundles.update({ring_item(f): (small_key_item(f), RING_DUNGEONS[f]) for f in ring_folders})
     relevant |= set(ring_keys.values())
+    ring_dungeon_keys = {small_key_item(folder) for folder in RING_DUNGEONS}
     # "Removed" keys: every key is held from the start (start_dungeon_values), the
     # key chests hold filler instead.
     from oot_rando.patching.key_adapter import start_logic_items
@@ -230,6 +234,8 @@ def prepare(data, options, groups, enemies, seed_key, open_forest=True, progress
             return False
         if item in ring_keys:
             return True       # the ring replaces every small key of the dungeon
+        if item in ring_dungeon_keys:
+            return item in removed_keys   # no ring for this dungeon: generic keys stay in place
         if item.startswith('Small Key ('):
             return item in key_dungeons or item in removed_keys
         if item in boss_keys:
@@ -237,7 +243,8 @@ def prepare(data, options, groups, enemies, seed_key, open_forest=True, progress
         if item.startswith('Boss Key ('):
             return (item in key_dungeons or item in removed_keys) and 'Ganons Castle' not in item
         if is_mapcompass(item):
-            return options['shuffle_mapcompass'] in ('dungeon', 'remove', 'startwith')
+            return options['shuffle_mapcompass'] in ('dungeon', 'remove', 'startwith', 'any_dungeon',
+                                                     'overworld', 'keysanity')
         if item == 'Kokiri Sword':
             return options['shuffle_kokiri_sword']
         if item.startswith('Remake: '):
@@ -403,6 +410,8 @@ def prepare(data, options, groups, enemies, seed_key, open_forest=True, progress
             rule = options['shuffle_bosskeys']
         elif is_key(item) or (is_mapcompass(item) and options['shuffle_mapcompass'] == 'dungeon'):
             rule = 'dungeon'
+        elif is_mapcompass(item) and options['shuffle_mapcompass'] in ('any_dungeon', 'overworld'):
+            rule = options['shuffle_mapcompass']
         else:
             continue
         if rule != 'keysanity':
@@ -430,7 +439,12 @@ def prepare(data, options, groups, enemies, seed_key, open_forest=True, progress
             return False
         if rule == 'overworld' and folder_dungeon[gid] is not None:
             return False
-        return can_take(canonical(item, gid), shuffled[gid]['form'], shuffled[gid].get('ap', ()))
+        actor = canonical(item, gid)
+        if not song_allowed(options.get('shuffle_song_items', 'song'), shuffled[gid]['source'], actor):
+            return False
+        if is_song_actor(actor) and set(shuffled[gid].get('ap', ())) & set(POSE_AFTER_CUTSCENE):
+            return False   # given back in game with a pose (qol_patches.give_gift_after), not text-only
+        return can_take(actor, shuffled[gid]['form'], shuffled[gid].get('ap', ()))
 
     # OoTR/AP vanilla-key compensation: with vanilla Fire Temple keys the logic
     # starts with one extra key (the vanilla layout expects the hammer door order).
@@ -547,6 +561,24 @@ def plan(data, options, groups, enemies, seed_key, open_forest=True, progress=No
 # Starting items that cannot be handed over silently at the end of the opening:
 # dungeon items (generic actors, or a key count only applied at the next item get).
 STARTING_UNSUPPORTED = ('Map (', 'Compass (', 'Small Key (', 'Boss Key (', 'Small Key Ring (', 'Remake: ')
+
+
+def key_ring_folders(options, seed_key):
+    """Dungeon folders whose small keys become a key ring."""
+    from oot_rando.patching.key_adapter import RING_DUNGEONS
+    from oot_rando.game.remake_world import FOLDER_DUNGEON
+    folders = sorted(RING_DUNGEONS)
+    mode = options['key_rings']
+    if mode == 'all':
+        return folders
+    if mode == 'choose':
+        return [f for f in folders if FOLDER_DUNGEON[f] in options['key_rings_list']]
+    if mode == 'random':
+        # Same draw in the Archipelago generation and in the application (same seed key).
+        rng = DetRandom(hashlib.sha256((seed_key + '\0key-rings-v1').encode()).digest())
+        chosen = [f for f in folders if rng.below(2)]
+        return chosen or [rng.choice(folders)]
+    return []
 
 
 def covered_by_start_values(item, options):
@@ -692,6 +724,10 @@ def _result(data, logic, options, matches, shuffled, placed, natives, sphere_of,
                 and options['shuffle_bosskeys'] in ('any_dungeon', 'keysanity')):
             from oot_rando.patching.key_adapter import boss_actor, item_folder
             canonical = boss_actor(item_folder(item))   # opens its own dungeon's boss door anywhere
+        if (item.startswith(('Map (', 'Compass (')) and 'Ganons Castle' not in item
+                and options['shuffle_mapcompass'] in ('any_dungeon', 'overworld', 'keysanity')):
+            from oot_rando.patching.key_adapter import specific_actor
+            canonical = specific_actor(item)   # sets its own dungeon's map / compass anywhere
         actor = form_actor(canonical, entry.get('form', 'chest'), skulltula_drop=source == 'skulltula')
         label = SOURCE_LABELS.get(source, source)
         name = entry['ap'][0] if entry['kind'] == 'exact' else (
@@ -736,7 +772,7 @@ def _result(data, logic, options, matches, shuffled, placed, natives, sphere_of,
                 'virtual': {name: list(members) for name, members in logic.virtual.items()}}}
 
 
-REPEATABLE = ('pots', 'bushes', 'rocks', 'crates', 'beehives')
+REPEATABLE = ('pots', 'bushes', 'rocks', 'crates', 'beehives', 'trees')
 
 
 def _entry_zone(data, entry, gid):
@@ -808,7 +844,7 @@ def _is_reward(item):
 SOURCE_LABELS = {'chest': 'chest', 'skulltula': 'skulltula', 'shop': 'shop', 'freestanding': 'freestanding',
                  'npc': 'NPC', 'boss': 'dungeon reward', 'bossheart': 'boss heart container',
                  'fairy': 'great fairy', 'quest': 'quest reward', 'scrub': 'business scrub', 'pots': 'pot', 'bushes': 'bush', 'rocks': 'rock', 'crates': 'crate',
-                 'beehives': 'beehive'}
+                 'beehives': 'beehive', 'song': 'song', 'trees': 'tree'}
 
 
 def _patches(entry):
@@ -831,6 +867,9 @@ def _patches(entry):
     return result
 
 
-def replay(data, options, groups, enemies, placements, open_forest=True, extra=None):
-    """Independent re-check of finished placements (used by verify_full)."""
-    return plan(data, options, groups, enemies, 'replay', open_forest, forced=placements, extra=extra)
+def replay(data, options, groups, enemies, placements, open_forest=True, extra=None, seed_key='replay'):
+    """Independent re-check of finished placements (used by verify_full).
+
+    ``seed_key``: the generation's, when an option is drawn from it (random key rings).
+    """
+    return plan(data, options, groups, enemies, seed_key, open_forest, forced=placements, extra=extra)

@@ -22,13 +22,14 @@ class OptionTests(unittest.TestCase):
         self.assertEqual(items, {'Hover Boots': 1, 'Progressive Hookshot': 2, 'Heart Container': 3, 'Bow': 1})
         self.assertEqual(rando_options.parse_items(rando_options.format_items(items)), items)
         self.assertEqual(rando_options.parse_items('  '), {})
+        self.assertEqual(rando_options.parse_items('zeldas lullaby'), {'Zeldas Lullaby': 1})
         with self.assertRaises(ValueError):
-            rando_options.parse_items('Zeldas Lullaby')
+            rando_options.parse_items('Goron Tunic')
 
     def test_validate_items(self):
         values = rando_options.validate({'start_inventory_from_pool': {'Bow': 2}}, supported_only=True)
         self.assertEqual(values['start_inventory_from_pool'], {'Bow': 2})
-        for bad in ({'Bow': 0}, {'Minuet of Forest': 1}, ['Bow'], {'Bow': True}):
+        for bad in ({'Bow': 0}, {'Goron Tunic': 1}, ['Bow'], {'Bow': True}):
             with self.assertRaises(ValueError):
                 rando_options.validate({'start_inventory_from_pool': bad})
 
@@ -50,8 +51,9 @@ class OptionTests(unittest.TestCase):
 
     def test_ap_start_inventory_is_imported(self):
         imported, ignored = rando_options.from_ap_yaml(
-            'game: Ocarina of Time\nOcarina of Time:\n  start_inventory:\n    Bow: 1\n    Minuet of Forest: 1\n')
-        self.assertEqual(imported['start_inventory_from_pool'], {'Bow': 1})
+            'game: Ocarina of Time\nOcarina of Time:\n  start_inventory:\n    Bow: 1\n    Minuet of Forest: 1\n'
+            '    Goron Tunic: 1\n')
+        self.assertEqual(imported['start_inventory_from_pool'], {'Bow': 1, 'Minuet of Forest': 1})
         self.assertEqual(len(ignored), 1)
 
     def test_newly_supported_values(self):
@@ -190,6 +192,18 @@ class Integration(unittest.TestCase):
                          'Progressive Hookshot')
         self.assertFalse([p for p in result['placements'] if p['item'] == 'Hover Boots'])
 
+    def test_chosen_key_rings(self):
+        from oot_rando.randomizer import full_randomizer
+        overrides = {'shuffle_smallkeys': 'keysanity', 'key_rings': 'choose',
+                     'key_rings_list': ('Forest Temple', 'Bottom of the Well')}
+        result = self.plan(overrides, 'rings')
+        items = {p['id']: p['item'] for p in result['placements']}
+        rings = sorted({i for i in items.values() if i.startswith('Small Key Ring (')})
+        self.assertEqual(rings, ['Small Key Ring (Bottom of the Well)', 'Small Key Ring (Forest Temple)'])
+        self.assertFalse([i for i in items.values() if i.startswith('Small Key (')])
+        options = dict(rando_options.defaults(), **overrides)
+        self.assertTrue(full_randomizer.replay(self.data, options, self.groups, self.enemies, items)['beatable'])
+
     def test_removed_keys_and_item_pools_beatable(self):
         from oot_rando.randomizer import full_randomizer
         for overrides in ({'shuffle_smallkeys': 'remove', 'shuffle_bosskeys': 'remove',
@@ -208,3 +222,59 @@ class Integration(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class KeyRingChoiceTests(unittest.TestCase):
+    def test_folders(self):
+        from oot_rando.randomizer.full_randomizer import key_ring_folders
+        base = rando_options.defaults()
+        self.assertEqual(key_ring_folders(base, 's'), [])
+        self.assertEqual(len(key_ring_folders(dict(base, key_rings='all'), 's')), 8)
+        chosen = dict(base, key_rings='choose', key_rings_list=('Fire Temple', 'Ganons Castle'))
+        self.assertEqual(key_ring_folders(chosen, 's'), ['FireTemple', 'InsideGanonCastle'])
+        draws = {tuple(key_ring_folders(dict(base, key_rings='random'), f'seed{i}')) for i in range(20)}
+        self.assertGreater(len(draws), 5)
+        self.assertTrue(all(draws))
+        self.assertEqual(key_ring_folders(dict(base, key_rings='random'), 'x'),
+                         key_ring_folders(dict(base, key_rings='random'), 'x'))
+
+    def test_validation(self):
+        base = dict(rando_options.defaults(), shuffle_smallkeys='keysanity')
+        rando_options.validate(dict(base, key_rings='random'), supported_only=True)
+        values = rando_options.validate(dict(base, key_rings='choose', key_rings_list=['Water Temple', 'Fire Temple']),
+                                        supported_only=True)
+        self.assertEqual(values['key_rings_list'], ('Fire Temple', 'Water Temple'))
+        for bad in ({'key_rings': 'choose'}, {'key_rings': 'choose', 'key_rings_list': ['Deku Tree']},
+                    {'key_rings': 'off'}):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                rando_options.validate(dict(base, **bad), supported_only=True)
+
+    def test_yaml_round_trips(self):
+        from oot_rando.archipelago.bridge import ap_option_specs, player_yaml
+        values = rando_options.validate(dict(rando_options.defaults(), shuffle_smallkeys='keysanity',
+                                             key_rings='choose', key_rings_list=['Spirit Temple']))
+        imported, ignored = rando_options.from_ap_yaml(rando_options.to_ap_yaml(values))
+        self.assertEqual(imported['key_rings_list'], ('Spirit Temple',))
+        self.assertEqual(ignored, [])
+        spec = next(s for s in ap_option_specs() if s['name'] == 'key_rings_list')
+        self.assertEqual(spec['kind'], 'list')
+        self.assertIn('  key_rings_list: ["Spirit Temple"]', player_yaml(values, True))
+
+
+class DungeonItemTests(unittest.TestCase):
+    def test_specific_actors_round_trip(self):
+        from oot_rando.patching.key_adapter import key_actor_item, key_records, key_texts, specific_actor
+        for item in ('Map (Deku Tree)', 'Compass (Ice Cavern)', 'Boss Key (Fire Temple)',
+                     'Small Key Ring (Ganons Castle)'):
+            with self.subTest(item=item):
+                self.assertEqual(key_actor_item(specific_actor(item)), item)
+                texts = key_texts(specific_actor(item), 'USen')
+                self.assertTrue(texts['Name'] and texts['GetMessage'])
+                self.assertTrue(key_texts(specific_actor(item), 'EUfr')['Name'])
+        records = {r['actor']: r for r in key_records(['Map (Water Temple)', 'Compass (Jabu Jabus Belly)'])}
+        self.assertEqual(records['Item_Map_WaterTemple']['gamedata'], 'DungeonInfo.WaterTemple.IsGetMap')
+        self.assertEqual(records['Item_Compass_Jabu']['kind'], 'compass')
+
+    def test_outside_modes_supported(self):
+        for mode in ('any_dungeon', 'overworld', 'keysanity'):
+            rando_options.validate({'shuffle_mapcompass': mode}, supported_only=True)

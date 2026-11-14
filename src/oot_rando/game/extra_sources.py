@@ -8,10 +8,12 @@ Every source becomes an *entry* with the same fields as a chest group of
 * ``shop`` (shelf items): ``Gyaml`` of the shelf actor, shop form;
 * ``freestanding`` (heart pieces, rupees and hearts placed in the world):
   ``Gyaml`` of the pickup, world form;
-* ``pots``/``bushes``/``rocks``/``crates``/``beehives``: explicit native
+* ``pots``/``bushes``/``rocks``/``crates``/``beehives``/``trees``: explicit native
   ``Drop__DropActor`` of the object, world form (these objects respawn).
   Empty rocks (no drop field at all) receive a new ``Drop__DropActor`` when
-  their pack declares it as an instance parameter;
+  their pack declares it as an instance parameter. Trees (``Obj_Tree_*``) have none either
+  and receive one the same way; trees whose drop table is explicitly ``None``
+  stay vanilla. Colossus palms are left out (drop never observed);
 * ``npc`` (NPC and minigame gifts): the item parameter of the giving event,
   event form. Trade items, songs, cows and masks are never touched;
 * ``scrub`` (one-time business scrubs: upgrades and heart pieces): the item
@@ -19,6 +21,8 @@ Every source becomes an *entry* with the same fields as a chest group of
 * ``boss`` (spiritual stones and medallions), ``fairy`` (great fairy rewards)
   and ``quest`` (story rewards: ocarinas, Zelda's letter, light arrows,
   Biggoron's sword): the item parameter of their giving cutscene, event form;
+* ``song`` (the 12 song cutscenes): their silent add, event form; the melody
+  teaching and the text-only get are handled by ``song_adapter``;
 * ``bossheart`` (boss heart containers): ``Gyaml`` of the placed container,
   world form.
 
@@ -31,7 +35,7 @@ from oot_rando.game.randomizer_categories import candidate_category
 from oot_rando.game.remake_world import FOLDER_AREAS, FOLDER_DUNGEON, actor_item, map_age
 
 GIVE_PARAMS = ('ActorName', 'ReveiveItem', 'ReceiveItem', 'TakenRewardActor', 'Actor')
-ENVIRONMENT = ('pots', 'bushes', 'rocks', 'crates', 'beehives')
+ENVIRONMENT = ('pots', 'bushes', 'rocks', 'crates', 'beehives', 'trees')
 FREESTANDING_JUNK = ('Obj_Rupee_Green', 'Obj_Rupee_Blue', 'Obj_Rupee_Red', 'Obj_Rupee_Purple',
                      'Obj_Rupee_Gold', 'Obj_Heart')
 ENV_DROPS = FREESTANDING_JUNK
@@ -40,7 +44,7 @@ ENV_DROPS = FREESTANDING_JUNK
 # crates too (Discord 14/11: Kakariko's 30 Obj_Pot_A_08 and every Hyrule Castle pot
 # and crate were left out; Obj_Pot_A_01/A_08 and Obj_BrokenBox_A_01 expose
 # Drop__DropActor per instance). Pots/crates with a random drop table stay vanilla.
-EMPTY_SOURCES = ('rocks', 'pots', 'crates')
+EMPTY_SOURCES = ('rocks', 'pots', 'crates', 'trees')
 EMPTY_VANILLA = 'Rupee (1)'
 SKIP_FOLDERS = ('DreamWorld', 'SageRoom')
 
@@ -139,6 +143,9 @@ EVENT_GIFTS = (
     ('quest', ('ToT Light Arrows Cutscene',), (), (('Dm_TimeTemple_0130', 'Event85', 'Item_Arrow_Light'),)),
     ('quest', ('DMT Biggoron',), (), (('Npc_Goron_Biggoron_Adult', 'Event123', 'Item_Sword_Biggoron'),)),
 )
+# Song locations: the silent add of each song cutscene (see patching/song_adapter.py).
+from oot_rando.patching.song_adapter import song_gifts as _song_gifts  # noqa: E402
+EVENT_GIFTS = EVENT_GIFTS + _song_gifts()
 # One-time business scrubs (``Enemy_Scrub_Business_Common``): the item sold is the
 # ``ActorName`` of each ``SimpleShopSub_Scrub_Business_OneTime`` call (one per
 # branch: e.g. medium or large bag depending on the pouch), the price its
@@ -166,7 +173,7 @@ SCRUB_LOW_PRICE = 10
 CHILD_WALLET = 200
 # Highest 'random' scrub price: kept at 99 so existing seeds replay identically.
 SCRUB_RANDOM_MAX = 99
-EVENT_SOURCES = ('npc', 'boss', 'fairy', 'quest', 'scrub')
+EVENT_SOURCES = ('npc', 'boss', 'fairy', 'quest', 'scrub', 'song')
 # Boss heart container of each dungeon map (one placed Obj_Heart_Container each).
 BOSS_HEARTS = {
     'InsideTheDekuTree': 'Deku Tree Queen Gohma Heart', 'DodongoCavern': 'Dodongos Cavern King Dodongo Heart',

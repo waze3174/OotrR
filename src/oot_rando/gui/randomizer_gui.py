@@ -46,7 +46,7 @@ ARCHIVE = data_dir() / 'seeds-uninstalled'
 TRACKER_KINDS = {
     'full_chests': 'Chest', 'full_skulltula': 'Gold Skulltula', 'full_freestanding': 'Freestanding item',
     'full_shop': 'Shop', 'full_pots': 'Pot', 'full_crates': 'Crate', 'full_beehives': 'Beehive',
-    'full_bushes': 'Bush', 'full_rocks': 'Rock', 'full_npc': 'NPC', 'full_scrub': 'Business scrub', 'kokiri_chests': 'Chest',
+    'full_bushes': 'Bush', 'full_rocks': 'Rock', 'full_trees': 'Tree', 'full_npc': 'NPC', 'full_scrub': 'Business scrub', 'kokiri_chests': 'Chest',
     'world_chests': 'Chest', 'vanilla_chest': 'Chest', 'vanilla_freestanding': 'Freestanding item',
     'vanilla_gs_token': 'Gold Skulltula', 'vanilla_shop': 'Shop', 'vanilla_npc': 'NPC',
     'vanilla_collectable': 'Item', 'vanilla_beehive': 'Beehive', 'vanilla_scrub': 'Deku Scrub',
@@ -70,21 +70,45 @@ OPTION_COPY = {
     'shuffle_npc_gifts': ('Character gifts and minigames', 'Shuffles the supported rewards of characters and minigames.'),
     'shuffle_boss_rewards': ('Boss and dungeon rewards', 'Shuffles spiritual stones, medallions and heart containers. The game scenes are kept.'),
     'shuffle_great_fairies': ('Great fairy rewards', 'Shuffles spells, magic and defense upgrades.'),
-    'shuffle_quest_rewards': ('Main quest rewards', 'Includes the ocarinas, Zelda\'s Letter, the Light Arrows and the Biggoron Sword. Songs stay in place.'),
+    'shuffle_quest_rewards': ('Main quest rewards', 'Includes the ocarinas, Zelda\'s Letter, the Light Arrows and the Biggoron Sword.'),
     'shuffle_pots': ('Pots', 'The first reward is shuffled. Once picked up, the pot goes back to its vanilla loot.'),
     'shuffle_crates': ('Crates', 'The first reward is shuffled. Later pickups use the vanilla loot.'),
     'shuffle_beehives': ('Beehives', 'The first reward is shuffled. Later pickups use the vanilla loot.'),
     'shuffle_bushes': ('Bushes and grass', 'Shuffles the first reward of supported sources, then restores their vanilla loot.'),
     'shuffle_rocks': ('Rocks and stones', 'The first reward is shuffled. Then the rock goes back to its vanilla behaviour, even if it gave no item.'),
+    'shuffle_trees': ('Trees', 'Roll into a tree: the first reward is shuffled. Then the tree goes back to its vanilla loot.'),
     'shuffle_enemy_spawns': ('Enemy souls', 'Find souls to make the matching enemies appear. A new game is required.'),
     'start_inventory_from_pool': ('Starting inventory', 'Items held from the start, separated by commas, '
                                   'with a count if needed: "Hover Boots, Progressive Hookshot x2, Heart Container x3". '
-                                  'Songs and tunics are not available yet.'),
+                                  'Songs by name ("Sarias Song"). Tunics are not available yet.'),
     'item_pool_value': ('Item pool', 'Plentiful: an extra copy of the major items. Scarce: at most 3 bottles '
                         'and half the hearts. Minimal: one bottle and no extra hearts.'),
     'logic_no_night_tokens_without_suns_song': ("Night skulltulas need Sun's Song",
                                                  'Waiting for the night is not expected by the logic.'),
 }
+
+
+class ListVar:
+    """Text field holding a subset of an option's values (``"Forest Temple, Fire Temple"``)."""
+
+    def __init__(self, option):
+        self.option = option
+        self.text = tk.StringVar(value='')
+
+    def get(self):
+        chosen = []
+        for part in (p.strip() for p in self.text.get().split(',')):
+            if not part:
+                continue
+            match = next((v for v in self.option.allowed() if v.casefold() == part.casefold()), None)
+            if match is None:
+                raise ValueError(f'{self.option.label}: unknown value {part!r} '
+                                 f'(choose among {", ".join(self.option.allowed())}).')
+            chosen.append(match)
+        return tuple(v for v in self.option.allowed() if v in chosen)
+
+    def set(self, value):
+        self.text.set(', '.join(value or ()))
 
 
 class ItemsVar:
@@ -274,7 +298,7 @@ class Application:
             ('Track the exploration', 'The tracker follows the most recent save by itself. Locations are updated after the game saves. Rewards of completed checks appear next to their name.'),
             ('Understand the states', 'Available: the logic estimates you can get the reward with your inventory. Blocked: a known condition is missing. Unknown: the data does not allow a conclusion. These locations stay visible by default.'),
             ('Keep the right save', 'Generate a new seed, start a new game, then save after the intro. The tracker picks the newest save; choose another in Setup. An old save cannot be linked automatically. The tracker never changes its files.'),
-            ('Repeatable sources', 'In a new seed, the shuffled reward can only be picked up once. Then pots, bushes, crates, beehives and rocks go back to their vanilla loot. Old seeds keep their rules.'),
+            ('Repeatable sources', 'In a new seed, the shuffled reward can only be picked up once. Then pots, bushes, crates, beehives, rocks and trees go back to their vanilla loot. Old seeds keep their rules.'),
             ('Compatibility', 'The glitchless logic is built in (remake world, derived from the Archipelago OoT rules). Some remake matches are approximate. Small keys stay in place. Only settings supported by the generator are offered.')]
         grid = ttk.Frame(parent, style='Page.TFrame')
         grid.pack(fill='x')
@@ -570,7 +594,7 @@ class Application:
         ttk.Label(details, textvariable=self.full_reason, style='Page.TLabel', wraplength=780, justify='left').pack(anchor='w', padx=4, pady=(0, 10))
         grouped = {}
         for option in rando_options.OPTIONS:
-            if option.kind == 'items':
+            if option.kind in ('items', 'list'):
                 supported = [None, None]  # free text: always shown
             elif option.kind == 'bool':
                 supported = [v for v in (False, True) if option.supported(v)]
@@ -1047,8 +1071,8 @@ class Application:
         def describe():
             self.full_reason.set(label + ' — ' + (help_text or 'Choose the value that suits your game.'))
             self.update_presets()
-        if option.kind == 'items':
-            variable = ItemsVar()
+        if option.kind in ('items', 'list'):
+            variable = ItemsVar() if option.kind == 'items' else ListVar(option)
             widget = ttk.Entry(parent, textvariable=variable.text, width=40) if parent else None
             if widget:
                 widget.bind('<FocusOut>', lambda event: describe(), add='+')

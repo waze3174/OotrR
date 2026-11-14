@@ -1,6 +1,6 @@
 # OoT Randomizer — Hookshot and emulator
 
-[![Latest release](https://img.shields.io/github/v/release/Mozencaz/OotrR?label=download)](https://github.com/Mozencaz/OotrR/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/Mozencaz/OotrR?label=download)](https://github.com/Mozencaz/OotrR/releases/latest) [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/dnqs4eRZC)
 
 **[Download the latest release](https://github.com/Mozencaz/OotrR/releases/latest)**
 (Windows `.zip` or Linux `.tar.gz`, portable, no installation).
@@ -69,7 +69,7 @@ stay visible; a manual fallback mark is possible without revealing the reward.
 Old seeds still open, but must be regenerated to get the newer metadata. The
 tracker refuses a save that does not carry the new-game marker of the selected seed.
 
-For pots, crates, beehives, bushes and rocks shuffled by the full mode, the
+For pots, crates, beehives, bushes, rocks and trees shuffled by the full mode, the
 randomized reward is limited to the first pickup. A private get event sets a
 persistent flag, then the source goes back to its native loot (a rock without
 vanilla loot gives nothing again). A guard forbids a second randomized reward

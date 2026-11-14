@@ -81,7 +81,10 @@ def verify(nup_path, seed_dir):
     from oot_rando.randomizer import full_randomizer
     plan = full_randomizer.replay(World(), manifest['settings']['full'], copy.deepcopy(groups),
                                   copy.deepcopy(enemies), {p['id']: p['ap_item'] for p in full},
-                                  manifest['settings']['open_forest'], extra=copy.deepcopy(extra))
+                                  manifest['settings']['open_forest'], extra=copy.deepcopy(extra),
+                                  # options drawn from the seed key (random key rings) must match
+                                  seed_key=(manifest['settings'].get('archipelago') or {}).get('seed_key')
+                                  or manifest['seed_id'])
     tokens, natives = plan['progressive']['tokens'], plan['progressive']['natives']
     for placement in full:
         reward = placement.get('reward_actor', placement['actor'])
@@ -240,9 +243,8 @@ def verify(nup_path, seed_dir):
                 received = set(mailbox_key_items((skips.get('ap_mailbox') or {}).get('items', [])))
                 placed = {p['ap_item'] for p in full
                           if p['ap_item'].startswith('Small Key Ring (')
-                          or (p['ap_item'].startswith('Boss Key (')
-                              and p.get('reward_actor', p['actor']).removeprefix('Obj_Rando_')
-                              .removeprefix('Shop_Rando_').startswith('Item_BossKey_'))}
+                          or is_key_actor(p.get('reward_actor', p['actor']).removeprefix('Obj_Rando_')
+                                          .removeprefix('Shop_Rando_'))}
                 records = key_records(received | placed)
                 if records != skips['key_items']['records']:
                     raise ValueError('Dungeon keys differ from the spoiler.')
@@ -292,6 +294,20 @@ def verify(nup_path, seed_dir):
             if path == ap_mailbox.FLOW_PATH and skips.get('ap_mailbox'):
                 # Archipelago reception: the item-get entry the global sequence starts.
                 original = ap_mailbox.add_entries(original, skips['ap_mailbox']['items'])
+            if skips.get('big_poes'):
+                from oot_rando.patching import big_poes
+                if path in {f'Event/EventFlow/{big_poes.FLOW}.bfevfl.zs', f'Event/EventFlow/{big_poes.FLOW}.110.bfevfl.zs'}:
+                    if skips['big_poes'] != ((manifest.get('settings') or {}).get('full') or {}).get('big_poe_count'):
+                        raise ValueError('Big Poe count differs from the settings.')
+                    original = big_poes.patch_flow(original, skips['big_poes'])
+                    report['big_poes'] = skips['big_poes']
+            song_flows = skips.get('songs') or {}
+            if path in song_flows:
+                # Songs: text-only gets and cutscenes without their melody teaching.
+                from oot_rando.patching.song_adapter import check_song_ops, patch_flow as patch_song_flow
+                check_song_ops({path: song_flows[path]}, event_edits)
+                original = patch_song_flow(original, song_flows[path])
+                report['song_flows'] = report.get('song_flows', 0) + 1
             if path in chest_flows:
                 from oot_rando.patching.chest_flags import add_entries
                 original = add_entries(original, chest_flows[path])

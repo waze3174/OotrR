@@ -36,7 +36,10 @@ class Units(unittest.TestCase):
         self.assertNotIn('logic_rules', specs)          # a single supported value: not exposed
         for spec in specs.values():
             self.assertGreaterEqual(len(spec['values']), 2)
-            self.assertIn(spec['default'], spec['values'])
+            if spec['kind'] == 'list':
+                self.assertLessEqual(set(spec['default']), set(spec['values']))
+            else:
+                self.assertIn(spec['default'], spec['values'])
         self.assertIn('random', specs['shopsanity']['values'])
 
     def test_random_value_is_renamed(self):
@@ -313,7 +316,7 @@ class WithGame(unittest.TestCase):
             'Options.py': (
                 'class Toggle: pass\nclass DefaultOnToggle(Toggle): pass\nclass Choice: pass\n'
                 'class OptionError(Exception): pass\nclass StartInventoryPool: pass\n'
-                'class PerGameCommonOptions: pass\n'),
+                'class PerGameCommonOptions: pass\nclass OptionSet: pass\n'),
             'worlds/__init__.py': '',
             'worlds/AutoWorld.py': 'class World: pass\n',
         }

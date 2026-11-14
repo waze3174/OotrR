@@ -18,11 +18,14 @@ and logic are checked statically (`python -m oot_rando verify`); items marked
 | **Great Fairies** (`shuffle_great_fairies`) | Din, Farore, Nayru, magic, double magic, double defense | `ActorName` of the fairy cutscene |
 | **Quest rewards** (`shuffle_quest_rewards`) | Saria's ocarina, Ocarina of Time, Zelda's Letter, Light Arrows, Biggoron Sword | `ActorName` of the cutscene; ocarinas: also the silent pouch add |
 | **Pots, crates, beehives, bushes, rocks** | explicit-drop objects (rupee, heart); empty rocks (≈ 195, no drop table) | existing `Drop__DropActor`, or added on rocks whose pack declares it as an instance parameter |
+| **Trees** (`shuffle_trees`) | 52 `Obj_Tree_*` (Hyrule Field 39, Kokiri Forest 8, castle, Kakariko, market); trees with an explicit `None` drop table and Colossus palms stay vanilla | `Drop__DropActor` added (instance parameter of the tree pack); falls when Link rolls into the tree |
 | **Business Scrubs** (`shuffle_scrubs`) | single-sale remake scrubs only: stick upgrade (`LW Deku Scrub Near Bridge`), nut upgrade (`LW Deku Scrub Grotto Front`), field and crater heart pieces | `ActorName` and `Price` of each `SimpleShopSub_Scrub_Business_OneTime` call in `Enemy_Scrub_Business_Common` |
 
-Never changed: the whole adult trade quest up to the Biggoron Sword, songs, the
+| **Songs** (`shuffle_song_items`) | the 12 song cutscenes (`Dm_MelodyGet_*`) | silent add of the cutscene (`GetPouchContentByActorName`); see *Songs* below |
+
+Never changed: the whole adult trade quest up to the Biggoron Sword, the
 child trade (egg, letter, masks), cows, the Gerudo card, beans, the lake Fire
-Arrows. Repeatable sources (pots, crates, beehives, bushes, rocks) give their
+Arrows. Repeatable sources (pots, crates, beehives, bushes, rocks, trees) give their
 shuffled reward only once (`repeatable_adapter.py`), then go back to their vanilla loot.
 
 ## Starting inventory, item pool, removed keys
@@ -52,6 +55,41 @@ shuffled reward only once (`repeatable_adapter.py`), then go back to their vanil
   `qol_patches.NOCTURNAL_SKULLTULA_MAPS`). The logic is unchanged (it still expects
   the night or Sun's Song), so the game is only more permissive. **Not validated in game.**
 * **Fast chests** (`fast_chests`): same patch as the "chests without cutscene" skip.
+
+## Songs (`song_adapter.py`)
+
+Songs are pouch actors (`Item_Melody_<song>`, a rupee model as placeholder). Each
+song cutscene teaches its melody through `Dm_SY_Ocarina/LearningOcarina*` (the NPC
+plays it, the player plays it back, then `LearningOcarinaPlayAuto`/`…ForSeek` adds
+the melody of the current `MelodyType`) and also adds it silently
+(`GetPouchContent/GetPouchContentByActorName`).
+
+* **Modes**: vanilla; shuffled among the song locations; song locations and
+  dungeon rewards; anywhere a cutscene can give them (song locations, dungeon
+  rewards, great fairies, story rewards; the matching options must be on). Never in
+  chests, pickups, shops or NPC gifts: those show the item in Link's hands. Never at
+  Queen Gohma either (her gift is given back after the cutscene with a pose).
+* **Text only**: a song is given by the silent add followed by
+  `GetPouchContent/DisplayGetByActorName`, the game's get window without pose
+  ("You learned Saria's Song!" and its caption; the same call Saria's ocarina gift
+  uses). A pose-based get (`Dm_SY_GetInEvent/*`, great fairies) becomes the silent
+  add. A source that already has its own display call (Ocarina of Time, Ruto's
+  sapphire) gets no second window. Received from another world: same hand-over.
+* **Song location giving another item**: every `LearningOcarina*` call of the
+  cutscene becomes a one-frame wait (no wrong melody taught or added), the placed
+  item is added silently and its get window shown. Sheik in Crater's direct write of
+  `IsGet.Item_Melody_FireBolero` follows the placed song (or is removed). The NPC's
+  lines still speak of the vanilla song.
+* **Windmill**: the adult windmill man plays the Song of Storms cutscene only while
+  `IsGet.Item_Melody_StormSong` is false; his four checks read the check's own
+  collection flag instead. The other song cutscenes start from quest steps.
+* **Not validated in game.**
+
+## Big Poes to bring back (`big_poes.py`)
+
+`big_poe_count` (1 to 10): the collector (`Npc_Hylia_048_BottleShop`) compares the
+points held before a sale (100 per Big Poe): `Event70` against 100 × (N − 1)
+instead of 900, `Event265` lets those points through. **Not validated in game.**
 
 ## Item forms and derived actors (`item_forms.py`)
 
@@ -140,7 +178,7 @@ the dialogue box stayed empty and blocked the game. A new save is required.
   locations are reachable.
 - Skulltulas, stalls: conservative group per zone. The remake puts Lake Hylia and
   Lon Lon Ranch in the Hyrule Field maps; the matching accounts for it.
-- Pots, bushes, rocks, crates, beehives, lying rupees: rule of the **whole zone**.
+- Pots, bushes, rocks, crates, beehives, trees, lying rupees: rule of the **whole zone**.
 - A source found only in the child maps (`*_Child_*`) or only in the adult maps
   (`*_Adult_*`) is collected at that age: each of its AP locations that this age can
   ever reach must be reachable **at that age** (`Child|`/`Adult|` members, the AP
@@ -229,6 +267,11 @@ outside the maps are not covered (except chest events).
 10. **Progressive items**: find the higher copy of a family first (e.g. a slingshot
     token after the bullet bag was expected): the first one found gives the slingshot,
     the next one the bag; a native chest found later never takes capacity away.
+11. **Songs**: a song cutscene giving another song shows only its text and adds the
+    right song (menu, playable); one giving an item does not teach its melody; a song
+    at a great fairy or a dungeon reward shows its text, nothing held; the windmill
+    still plays its cutscene once Song of Storms was found elsewhere.
+12. **Big Poes**: with 3 to bring back, the collector rewards the third sale.
 
 Known limits: some NPCs decide "already given" from the vanilla item (e.g. silver
 scale for the diving game) and can give their new item again; shop texts of
