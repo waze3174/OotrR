@@ -144,6 +144,8 @@ class Application:
         self.mods.trace_add('write', lambda *args: self.write_app_state(mods_dir=self.mods.get()))
         self.check_updates = tk.BooleanVar(value=self.app_state.get('check_updates', True) is not False)
         self.check_updates.trace_add('write', lambda *args: self.write_app_state(check_updates=self.check_updates.get()))
+        # Opt-in: also offer the GitHub pre-releases (vX.Y.Z-beta.N) when checking for updates.
+        self.experimental_updates = tk.BooleanVar(value=self.app_state.get('experimental_updates') is True)
         self.updating, self.update_silent = False, True   # False, 'check' or 'install'
         self.extra_emulators = tk.StringVar(value=self.app_state.get('extra_emulators') or '')
         live_memory.set_extra_emulators(self.extra_emulators.get())
@@ -346,6 +348,19 @@ class Application:
         ttk.Button(row, text='Update the in-game tracker', command=self.update_seed_tracker).pack(side='left', padx=(8, 0))
         ttk.Label(box, textvariable=self.connection_status, style='Small.TLabel', wraplength=780).pack(anchor='w')
         ttk.Label(box, textvariable=self.turbo_status, style='Small.TLabel').pack(anchor='w')
+        box = self.card(parent, 'Application updates', f'Installed version: {APP_VERSION}'
+                        + (' (experimental)' if updater.is_prerelease(APP_VERSION) else '') + '.')
+        ttk.Checkbutton(box, text='Use experimental versions (pre-releases)', variable=self.experimental_updates,
+                        command=self.experimental_toggled).pack(anchor='w')
+        ttk.Label(box, text='Experimental versions get new features first, but may contain bugs or break a seed in progress. '
+                  'Untick to go back to stable versions: you move to the next stable release once it is out.',
+                  style='Small.TLabel', wraplength=780).pack(anchor='w', pady=(4, 0))
+
+    def experimental_toggled(self):
+        enabled = self.experimental_updates.get()
+        self.write_app_state(experimental_updates=enabled)
+        if enabled:
+            self.check_for_updates(silent=False)
 
     def build_qol_card(self, parent):
         box = self.card(parent, 'Quality of life only', 'No randomization: only the options below, in their own folder (OoT_QoL).')
@@ -1050,7 +1065,8 @@ class Application:
             values = rando_options.validate(self.full_values())
             name = filedialog.asksaveasfilename(defaultextension='.yaml', filetypes=[('Archipelago YAML', '*.yaml')])
             if name:
-                Path(name).write_text(rando_options.to_ap_yaml(values), encoding='utf-8')
+                Path(name).write_text(rando_options.to_ap_yaml(values, open_forest=self.options['open_forest'].get()),
+                                      encoding='utf-8')
                 self.status.set('Archipelago YAML exported.')
         except Exception as error:
             self.error(error)
@@ -1865,10 +1881,11 @@ class Application:
             self.update_silent = self.update_silent and silent   # a click shows the running check's answer
             return
         self.updating, self.update_silent = 'check', silent
+        experimental = self.experimental_updates.get()
 
         def worker():
             try:
-                self.events.put(('update-found', (updater.latest_release(), silent)))
+                self.events.put(('update-found', (updater.latest_release(experimental=experimental), silent)))
             except updater.UpdateError as error:
                 self.events.put(('update-error', (error, silent)))
         threading.Thread(target=worker, daemon=True).start()
@@ -1882,6 +1899,8 @@ class Application:
             return
         notes = release.notes.strip()
         notes = ('\n\n' + (notes[:600] + '…' if len(notes) > 600 else notes)) if notes else ''
+        if updater.is_prerelease(release.version):
+            notes = '\n\nExperimental version: it may contain bugs.' + notes
         if not updater.can_self_update():
             if messagebox.askyesno('Update available', f'Version {release.version} is available (you have '
                                    f'{APP_VERSION}).{notes}\n\nOpen the release page?'):
