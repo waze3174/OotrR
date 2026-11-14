@@ -7,7 +7,7 @@ player replaced by a reader of the game's save data. This file covers what diffe
 
 ## Loading
 
-`subsdk7` in the game's exefs. rtld links it (imports: `nnMain`, `aligned_alloc` and `free` from main; nn::fs, `nvnBootstrapLoader`,
+`subsdk7` in the game's exefs. rtld links it (imports: `nnMain`, `aligned_alloc` and `free` from main; nn::fs (also the SD card's mount, create, delete and write, for the postcard's settings), `nvnBootstrapLoader`,
 `snprintf` and a few libc functions from sdk; the list in `lib/imports.txt` is checked at link time) and calls
 `ootr_tracker_module_init` (DT_INIT). That does three things, with checked reads and unformatted logging only:
 
@@ -19,8 +19,9 @@ player replaced by a reader of the game's save data. This file covers what diffe
 
 Next to sloperinaGZ (`subsdk9`) and ocarinaMIDI (`subsdk8`) every hook calls what its slot held before, or the sdk's own function when
 the slot still points into main (a lazily bound import: calling it would crash). No symbol is shared: the module is linked with hidden
-visibility. It has no IPS patch and takes no game offset beyond the GameData ones in `builds.c`. It mounts nothing: it only reads
-`content:` (the game's RomFS, mounted by the game), so there is no mount name to clash.
+visibility. It has no IPS patch and takes no game offset beyond the GameData ones in `builds.c`. It reads `content:` (the game's RomFS, mounted
+by the game) and, for the postcard's settings, mounts the SD card once as `ootrtrk` (a mount name can be used once, and sloperinaGZ
+and ocarinaMIDI have their own).
 
 ## The seed file
 
@@ -140,6 +141,31 @@ then the small key's icon and `found/total`, then the boss key's icon, dimmed un
 as before. The atlas is a render target, so its rows run the window's way up: with the lower-left origin it is
 sampled upside down, as sloperinaGZ samples its layer.
 
+## The postcard
+
+A small card with the items' grid and the dungeons' keys, drawn in a corner while the panel is closed. Its parts:
+
+- `postcard.c` is pure: the four settings (on, position, size, opacity), their values and text, stepping through them,
+  the card's corner (`postcard_origin`), and the settings file's text (`postcard_format`, `postcard_parse`: `name=number` lines,
+  a bad line or value is skipped so a damaged file leaves the defaults).
+- `postcardfile.c` mounts the SD card as `ootrtrk` (`MountSdCard`, else `MountSdCardForDebug`) and reads and writes
+  `ootrTracker/postcard.cfg` as sloperinaGZ's `settings.c` does (create the directory, delete, create, write with flush). It reads when the
+  seed file has loaded (`ensure_seed` in `app.c`) and writes when the settings page is left or the panel closed with a change (not at each
+  press: a write is a few file calls on the game thread). With no SD card the settings are in memory only.
+- Browsing: the region count is the highlight's last stop, the **Postcard** entry, drawn in the regions' columns with On or Off in
+  place of a count. A opens `BROWSE_POSTCARD`: four rows (`browse_t.setting`); up and down move, left and right change the value
+  (`app.c` calls `postcard_step`), B goes back. That page is a narrower panel (320 font pixels).
+- With the card on and the panel closed, `app_frame` publishes a `panel_t` with `menu` false twice a second, filled by
+  `tracker_compute_icons` (items and keys only: not the 1,500 region flags), and the present hook draws the card from it every frame.
+  While the settings page is open the card is drawn as a preview: the panel is drawn first, then the card
+  over its corner, so a change is seen at once. On the regions and a region's list the card is hidden.
+- Drawing (`trackerui.c`): `layout_scaled` gives the fonts and hairline for a font pixel of any size, so the card is the panel's
+  own `draw_grid` and `draw_keys` at the card's scale (`postcard_scale` of the picture's font pixel: 0.55, 0.75 or 1.0 of the full-size
+  card, 22 x 20 font-pixel cells, so the icons are nearly square) with the keys in 3 columns. The opacity is `gpuui_set_opacity`: each
+  quad records the frame's opacity, and `write_element` multiplies its alpha by it (and a premultiplied icon's colour too), so
+  the box, the glyphs and the icons fade together. Quads overlap as they do at full opacity (text over a fainter box), so it reads as one
+  translucent card, not a flattened image.
+
 ## Failure modes
 
 Each is logged once and leaves the game alone: no `seed.trk` or a damaged one (idle); an unknown build (the panel opens and says so);
@@ -149,6 +175,8 @@ an NVN without the functions the icons need, or no memory for them (the items sh
 that NVN won't take (that item shows as its letters).
 
 ## Known limits
+
+- The postcard's settings are written when their page is left: if the game is closed on that page, the last changes are lost.
 
 - Nothing was tested in the game when this was written (TESTING.md has the plan).
 - Only ASCII is drawn (other characters show as `?`, one per byte); region and check names are ASCII in full-randomizer seeds (the

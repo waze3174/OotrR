@@ -30,6 +30,9 @@ void gpuui_begin(nvn_texture_t *target, nvn_rect_t area, int texture_height, boo
 /* whether the next gpuui_begin starts the glyph atlas afresh (it was full): the caller first waits until
  * the GPU is done with the frames in flight, whose copies read the atlas's staging rows */
 bool gpuui_atlas_resetting(void);
+/* The opacity (0 to 1) of everything recorded from now until the next gpuui_begin, which resets it to 1: every
+ * quad's alpha (and a premultiplied icon's colour) is multiplied by it when the frame is drawn. */
+void gpuui_set_opacity(float opacity);
 /* a w x h rectangle at (x, y); corners: (left, top), (right, top), (left, bottom), (right, bottom) */
 void gpuui_rect(float x, float y, float w, float h, const gpu_colour_t corners[4]);
 void gpuui_fill(float x, float y, float w, float h, gpu_colour_t colour);

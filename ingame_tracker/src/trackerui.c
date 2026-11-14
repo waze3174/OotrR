@@ -2,7 +2,8 @@
  * the type are sloperinaGZ's menu in its game style, at its sizes: a font pixel is a 360th of the picture's
  * height (3 pixels at 1080p). The sections follow OotrR's overlay: the items in rows (their icons, from the
  * seed's icons.bin, once they're in; their letters until then or without it), the dungeons' keys, the
- * checks found by region, one of them highlighted; or, with a region's list open, its checks. */
+ * checks found by region, one of them highlighted; or, with a region's list open, its checks. The postcard is
+ * the items and the keys alone, as a smaller card in a corner, drawn with the same code. */
 #include "trackerui.h"
 
 #include "gamefile.h"
@@ -50,6 +51,12 @@
 #define TICK_BOX_FP       5    /* a check's box */
 #define TICK_GAP_FP       5    /* between the box and the name */
 #define TICK_LINE_FP      0.6f /* an empty box's outline */
+#define POSTCARD_PANEL_WIDTH_FP 320 /* the panel showing the postcard's settings */
+#define SETTING_ROW_FP    14
+#define SETTING_VALUE_AT_FP 90 /* a setting's value, from the panel's inner edge */
+#define CARD_CELL_W_FP    22   /* the postcard at full size: item cells this wide, so the icons are nearly square */
+#define CARD_PAD_FP       5
+#define CARD_KEY_COLUMNS  3
 
 /* opacities */
 #define BOX_OPACITY        0.86f
@@ -64,7 +71,8 @@
 #define NAME_ROOM        64
 #define ELLIPSIS         ".."
 #define COUNT_ROOM       24
-#define HINT_REGIONS     "D-pad: choose a region     A: its checks     B: close"
+#define HINT_REGIONS     "D-pad: choose     A: open     B: close"
+#define HINT_POSTCARD    "Up / down: choose     Left / right: change     B: back"
 #define ICON_FILE        GAME_ROM "/RandoTracker/icons.bin"
 #define SMALL_KEY_ICON   "Small Key" /* the keys' entries in it, after the grid's items */
 #define BOSS_KEY_ICON    "Boss Key"
@@ -200,7 +208,7 @@ typedef struct {
 typedef struct {
   status_line_t status[MAX_STATUS_LINES];
   int status_count;
-  bool tracking, has_keys, has_summary, list;
+  bool tracking, has_keys, has_summary, list, postcard_page;
   int region_rows;
 } content_t;
 
@@ -232,9 +240,11 @@ static content_t content_of(const panel_t *panel)
   }
   if (content.tracking) {
     content.list = panel->browse.view == BROWSE_CHECKS && panel->browse.region < panel->state.region_count;
-    content.has_keys = !content.list && panel->state.key_count > 0;
-    content.has_summary = !content.list;
-    content.region_rows = content.list ? 0 : (int)browse_region_rows(panel->state.region_count);
+    content.postcard_page = panel->browse.view == BROWSE_POSTCARD;
+    bool regions = !content.list && !content.postcard_page;
+    content.has_keys = regions && panel->state.key_count > 0;
+    content.has_summary = regions;
+    content.region_rows = regions ? (int)browse_region_rows(panel->state.region_count) : 0;
   }
   return content;
 }
@@ -254,6 +264,8 @@ static float content_height_fp(const content_t *content)
   float h = 2 * PAD_Y_FP + TITLE_ROW_FP + TITLE_GAP_FP + content->status_count * STATUS_ROW_FP;
   if (content->list)
     return h + LIST_HEAD_ROW_FP + BROWSE_CHECK_ROWS * LIST_ROW_FP + SECTION_GAP_FP + HINT_ROW_FP;
+  if (content->postcard_page)
+    return h + LIST_HEAD_ROW_FP + POSTCARD_SETTING_COUNT * SETTING_ROW_FP + SECTION_GAP_FP + HINT_ROW_FP;
   if (content->tracking)
     h += GRID_ROWS * GRID_ROW_FP + SECTION_GAP_FP + HINT_ROW_FP;
   if (content->has_keys)
@@ -263,16 +275,28 @@ static float content_height_fp(const content_t *content)
   return h + content->region_rows * REGION_ROW_FP;
 }
 
+/* the fonts and the hairline for a font pixel of `fp` screen pixels; the box is the caller's */
+static layout_t layout_scaled(float fp)
+{
+  layout_t l = { .fp = fp };
+  l.line = fp * LINE_FP < MIN_LINE_PX ? MIN_LINE_PX : (float)(int)(fp * LINE_FP + 0.5f);
+  l.title = type_for(GF_BOLD, TITLE_TEXT_FP, fp);
+  l.body = type_for(GF_REGULAR, BODY_TEXT_FP, fp);
+  l.bold = type_for(GF_BOLD, BODY_TEXT_FP, fp);
+  return l;
+}
+
+static float picture_fp(nvn_rect_t area)
+{
+  return area.h / PICTURE_LINES_PER_FP;
+}
+
 static layout_t layout_for(const content_t *content, nvn_rect_t area)
 {
-  layout_t l;
-  l.fp = area.h / PICTURE_LINES_PER_FP;
-  l.line = l.fp * LINE_FP < MIN_LINE_PX ? MIN_LINE_PX : (float)(int)(l.fp * LINE_FP + 0.5f);
-  l.title = type_for(GF_BOLD, TITLE_TEXT_FP, l.fp);
-  l.body = type_for(GF_REGULAR, BODY_TEXT_FP, l.fp);
-  l.bold = type_for(GF_BOLD, BODY_TEXT_FP, l.fp);
+  layout_t l = layout_scaled(picture_fp(area));
   float room = area.w - 2 * MARGIN_FP * l.fp;
-  l.w = PANEL_WIDTH_FP * l.fp < room ? PANEL_WIDTH_FP * l.fp : room;
+  float width = (content->postcard_page ? POSTCARD_PANEL_WIDTH_FP : PANEL_WIDTH_FP) * l.fp;
+  l.w = width < room ? width : room;
   l.h = content_height_fp(content) * l.fp;
   l.x = (float)(int)((area.w - l.w) / 2);
   l.y = (float)(int)(MARGIN_FP * l.fp);
@@ -385,12 +409,18 @@ static void draw_dungeon_keys(const layout_t *l, const dungeon_keys_t *keys, flo
     draw_text(&l->bold, "B", x, baseline, held ? white : faint_colour);
 }
 
-static float draw_keys(const layout_t *l, const tracker_state_t *state, float y)
+static uint32_t key_rows(const tracker_state_t *state, uint32_t columns)
 {
-  float row = KEYS_ROW_FP * l->fp, column_w = l->inner_w / (float)state->key_count;
+  return (state->key_count + columns - 1) / columns;
+}
+
+/* the dungeons' keys, `columns` to a row, filled left to right */
+static float draw_keys(const layout_t *l, const tracker_state_t *state, float y, uint32_t columns)
+{
+  float row = KEYS_ROW_FP * l->fp, column_w = l->inner_w / (float)columns;
   for (uint32_t i = 0; i < state->key_count; i++)
-    draw_dungeon_keys(l, &state->keys[i], l->inner_x + i * column_w, y, row);
-  return y + row + SECTION_GAP_FP * l->fp;
+    draw_dungeon_keys(l, &state->keys[i], l->inner_x + (i % columns) * column_w, y + (i / columns) * row, row);
+  return y + key_rows(state, columns) * row + SECTION_GAP_FP * l->fp;
 }
 
 static float draw_summary(const layout_t *l, const tracker_state_t *state, float y)
@@ -435,30 +465,71 @@ static void draw_hint(const layout_t *l, const char *hint, float y)
   draw_text(&l->body, hint, l->inner_x, baseline_in(&l->body, y, HINT_ROW_FP * l->fp), dim_colour);
 }
 
-static void draw_region(const layout_t *l, const region_state_t *region, float x, float column_w, float y, float row)
+/* an entry of the columns: its name on the left, its value (a count, On or Off) on the right */
+static void draw_entry(const layout_t *l, const char *name, const char *value, rgb_t name_colour, rgb_t value_colour,
+                       float x, float column_w, float y, float row)
 {
-  char count[COUNT_ROOM], name[NAME_ROOM];
-  snprintf(count, sizeof(count), "%u/%u", (unsigned)region->collected, (unsigned)region->trackable);
-  float count_w = text_width(&l->body, count), baseline = baseline_in(&l->body, y, row);
-  bool done = region->collected == region->trackable, none = region->collected == 0;
-  fit_name(l, region->name, column_w - count_w - REGION_NAME_GAP_FP * l->fp, name);
-  draw_text(&l->body, name, x, baseline, done ? done_colour : none ? dim_colour : text_colour);
-  draw_text(&l->body, count, x + column_w - count_w, baseline, done ? done_colour : none ? dim_colour : white);
+  char shown[NAME_ROOM];
+  float value_w = text_width(&l->body, value), baseline = baseline_in(&l->body, y, row);
+  fit_name(l, name, column_w - value_w - REGION_NAME_GAP_FP * l->fp, shown);
+  draw_text(&l->body, shown, x, baseline, name_colour);
+  draw_text(&l->body, value, x + column_w - value_w, baseline, value_colour);
 }
 
+static void draw_region(const layout_t *l, const region_state_t *region, float x, float column_w, float y, float row)
+{
+  char count[COUNT_ROOM];
+  snprintf(count, sizeof(count), "%u/%u", (unsigned)region->collected, (unsigned)region->trackable);
+  bool done = region->collected == region->trackable, none = region->collected == 0;
+  draw_entry(l, region->name, count, done ? done_colour : none ? dim_colour : text_colour,
+             done ? done_colour : none ? dim_colour : white, x, column_w, y, row);
+}
+
+static void draw_postcard_entry(const layout_t *l, const postcard_settings_t *postcard, float x, float column_w,
+                                float y, float row)
+{
+  draw_entry(l, postcard_setting_name(POSTCARD_SETTING_SHOWN), postcard_value_text(postcard, POSTCARD_SETTING_SHOWN),
+             text_colour, postcard->shown ? done_colour : dim_colour, x, column_w, y, row);
+}
+
+/* the regions, then the Postcard entry, in columns filled top to bottom */
 static float draw_regions(const layout_t *l, const panel_t *panel, int rows, float y)
 {
   const tracker_state_t *state = &panel->state;
   float gap = REGION_COLUMN_GAP_FP * l->fp, row = REGION_ROW_FP * l->fp;
   float column_w = (l->inner_w - (REGION_COLUMNS - 1) * gap) / REGION_COLUMNS;
-  for (uint32_t i = 0; i < state->region_count; i++) {
+  for (uint32_t i = 0; i <= state->region_count; i++) {
     int column = (int)i / rows, line = (int)i % rows;
     float x = l->inner_x + column * (column_w + gap), top = y + line * row;
     if (i == panel->browse.region)
       draw_highlight(l, x, top, column_w, row);
-    draw_region(l, &state->regions[i], x, column_w, top, row);
+    if (i < state->region_count)
+      draw_region(l, &state->regions[i], x, column_w, top, row);
+    else
+      draw_postcard_entry(l, &panel->postcard, x, column_w, top, row);
   }
   return y + rows * row;
+}
+
+/* --- the postcard's settings ---------------------------------------------------------------------- */
+
+static float draw_postcard_page(const layout_t *l, const panel_t *panel, float y)
+{
+  float head = LIST_HEAD_ROW_FP * l->fp, row = SETTING_ROW_FP * l->fp;
+  draw_text(&l->bold, postcard_setting_name(POSTCARD_SETTING_SHOWN), l->inner_x, baseline_in(&l->bold, y, head),
+            title_colour);
+  y += head;
+  for (int i = 0; i < POSTCARD_SETTING_COUNT; i++) {
+    char value[NAME_ROOM];
+    float top = y + i * row;
+    if ((uint32_t)i == panel->browse.setting)
+      draw_highlight(l, l->inner_x, top, l->inner_w, row);
+    draw_text(&l->body, postcard_setting_name((postcard_setting_t)i), l->inner_x, baseline_in(&l->body, top, row),
+              text_colour);
+    snprintf(value, sizeof(value), "< %s >", postcard_value_text(&panel->postcard, (postcard_setting_t)i));
+    draw_text(&l->bold, value, l->inner_x + SETTING_VALUE_AT_FP * l->fp, baseline_in(&l->bold, top, row), white);
+  }
+  return y + POSTCARD_SETTING_COUNT * row + SECTION_GAP_FP * l->fp;
 }
 
 /* --- a region's list of checks ------------------------------------------------------------------ */
@@ -530,6 +601,10 @@ static void draw_panel(const panel_t *panel, nvn_rect_t area)
   y = draw_status(&l, &content, y);
   if (!content.tracking)
     return;
+  if (content.postcard_page) {
+    draw_hint(&l, HINT_POSTCARD, draw_postcard_page(&l, panel, y));
+    return;
+  }
   if (content.list) {
     y = draw_list(&l, panel, draw_list_heading(&l, panel, y));
     draw_hint(&l, HINT_LIST, y);
@@ -537,9 +612,50 @@ static void draw_panel(const panel_t *panel, nvn_rect_t area)
   }
   y = draw_grid(&l, &panel->state, y);
   if (content.has_keys)
-    y = draw_keys(&l, &panel->state, y);
+    y = draw_keys(&l, &panel->state, y, panel->state.key_count);
   y = draw_summary(&l, &panel->state, y);
   draw_hint(&l, HINT_REGIONS, draw_regions(&l, panel, content.region_rows, y));
+}
+
+/* --- the postcard --------------------------------------------------------------------------------- */
+
+/* the card's box in the corner its settings choose, at its size: the grid's cells CARD_CELL_W_FP wide and the keys
+ * in CARD_KEY_COLUMNS columns under them, all at the card's own scale of the picture's font pixel */
+static layout_t card_layout(const postcard_settings_t *settings, const tracker_state_t *state, nvn_rect_t area)
+{
+  layout_t l = layout_scaled(picture_fp(area) * postcard_scale(settings));
+  uint32_t rows = key_rows(state, CARD_KEY_COLUMNS);
+  l.inner_w = GRID_COLUMNS * CARD_CELL_W_FP * l.fp;
+  l.w = l.inner_w + 2 * CARD_PAD_FP * l.fp;
+  l.h = (2 * CARD_PAD_FP + GRID_ROWS * GRID_ROW_FP + (rows ? SECTION_GAP_FP + rows * KEYS_ROW_FP : 0)) * l.fp;
+  postcard_origin((postcard_position_t)settings->position, area.w, area.h, l.w, l.h, MARGIN_FP * picture_fp(area),
+                  &l.x, &l.y);
+  l.x = (float)(int)l.x;
+  l.y = (float)(int)l.y;
+  l.inner_x = l.x + CARD_PAD_FP * l.fp;
+  return l;
+}
+
+static void draw_postcard(const panel_t *panel, nvn_rect_t area)
+{
+  layout_t l = card_layout(&panel->postcard, &panel->state, area);
+  gpuui_set_opacity(postcard_opacity(&panel->postcard));
+  gpuui_fill(l.x, l.y, l.w, l.h, to_gpu(box_colour, BOX_OPACITY));
+  float y = draw_grid(&l, &panel->state, l.y + CARD_PAD_FP * l.fp);
+  if (panel->state.key_count)
+    draw_keys(&l, &panel->state, y, CARD_KEY_COLUMNS);
+  gpuui_set_opacity(1);
+}
+
+/* The panel when it is open; the postcard when it is on, with the panel closed or showing the postcard's
+ * settings (the card then shows what they do). */
+static void draw_frame(const panel_t *panel, nvn_rect_t area)
+{
+  if (panel->menu)
+    draw_panel(panel, area);
+  bool card_wanted = !panel->menu || panel->browse.view == BROWSE_POSTCARD;
+  if (card_wanted && panel->mode == PANEL_TRACKING && panel->postcard.shown)
+    draw_postcard(panel, area);
 }
 
 bool trackerui_record(nvn_obj_t *cmd, int slot, nvn_texture_t *texture, const nvn_texture_info_t *info,
@@ -551,6 +667,6 @@ bool trackerui_record(nvn_obj_t *cmd, int slot, nvn_texture_t *texture, const nv
     return false;
   gpuui_begin(texture, area, info->height, nvn_origin_lower_left(), slot);
   icons_step();
-  draw_panel(panel, area);
+  draw_frame(panel, area);
   return gpuui_end(cmd, nvn_game_texture_pool(), nvn_game_sampler_pool());
 }

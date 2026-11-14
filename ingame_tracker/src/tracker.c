@@ -140,3 +140,10 @@ void tracker_compute(const trk_t *seed, const flag_source_t *flags, tracker_stat
   compute_regions(seed, flags, state);
   compute_keys(seed, flags, state);
 }
+
+void tracker_compute_icons(const trk_t *seed, const flag_source_t *flags, tracker_state_t *state)
+{
+  *state = (tracker_state_t){ .link = link_of(seed, flags) };
+  compute_items(seed, flags, state);
+  compute_keys(seed, flags, state);
+}

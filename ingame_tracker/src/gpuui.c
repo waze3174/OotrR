@@ -561,6 +561,7 @@ typedef struct {
   float w, h;
   float st[8];         /* the corners' texture coordinates */
   uint8_t source;
+  float opacity;       /* its colours' share when drawn (gpuui_set_opacity) */
 } quad_t;
 
 static quad_t quads[MAX_QUADS];
@@ -569,6 +570,7 @@ static nvn_texture_t *frame_target;
 static nvn_rect_t frame_area;
 static int frame_texture_height, frame_slot;
 static bool frame_lower_left;
+static float frame_opacity = 1;
 
 /* The items' icons (below), one picture at a time: read into `picture_mem` (a pool the CPU writes through its
  * cache), made a texture in its packaged layout (the game's own, as sloperinaGZ's gpuui.c makes the game's
@@ -599,6 +601,7 @@ void gpuui_begin(nvn_texture_t *target, nvn_rect_t area, int texture_height, boo
   frame_texture_height = texture_height;
   frame_lower_left = origin_lower_left;
   frame_slot = slot % SLOTS;
+  frame_opacity = 1;
   icons.staging_taken = false;
   gamefont_begin_draw();
   if (atlas_full) {
@@ -607,10 +610,18 @@ void gpuui_begin(nvn_texture_t *target, nvn_rect_t area, int texture_height, boo
   }
 }
 
+void gpuui_set_opacity(float opacity)
+{
+  frame_opacity = opacity;
+}
+
 static quad_t *new_quad(void)
 {
-  if (ready && n_quads < MAX_QUADS)
-    return &quads[n_quads++];
+  if (ready && n_quads < MAX_QUADS) {
+    quad_t *q = &quads[n_quads++];
+    q->opacity = frame_opacity;
+    return q;
+  }
   static bool warned;
   if (ready && !warned) {
     log_printf("gpu drawing: more than %d quads in a frame; the rest left out", MAX_QUADS);
@@ -854,11 +865,12 @@ static void write_element(uint8_t *at, const quad_t *q)
 {
   float e[ELEMENT_WORDS] = { 0 };
   memcpy(e, q->m, sizeof(q->m));
+  float colour_share = q->source == QUAD_ICON ? q->opacity : 1; /* an icon's colours are premultiplied */
   for (int i = 0; i < 4; i++) {
-    e[12 + 4 * i] = q->c[i].r;
-    e[13 + 4 * i] = q->c[i].g;
-    e[14 + 4 * i] = q->c[i].b;
-    e[15 + 4 * i] = q->c[i].a;
+    e[12 + 4 * i] = q->c[i].r * colour_share;
+    e[13 + 4 * i] = q->c[i].g * colour_share;
+    e[14 + 4 * i] = q->c[i].b * colour_share;
+    e[15 + 4 * i] = q->c[i].a * q->opacity;
   }
   e[28] = q->w;
   e[29] = q->h;
@@ -934,7 +946,7 @@ static void record_bake(nvn_obj_t *cmd)
     gpu_colour_t weight = { 1, 1, 1, 1.0f / (float)(n * n) };
     size_t elements = off_bake + (size_t)frame_slot * BAKE_QUADS * ELEMENT_SIZE;
     for (int i = 0; i < n * n; i++) {
-      quad_t q = { .c = { weight, weight, weight, weight }, .w = ICON_PX, .h = ICON_PX, .source = QUAD_PICTURE };
+      quad_t q = { .c = { weight, weight, weight, weight }, .w = ICON_PX, .h = ICON_PX, .source = QUAD_PICTURE, .opacity = 1 };
       set_translate(&q, x, y);
       /* the sample's place in the pixel, in the picture's coordinates (a pixel is 1 / ICON_PX of it) */
       float du = (((float)(i % n) + 0.5f) / (float)n - 0.5f) / ICON_PX;

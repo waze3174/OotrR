@@ -13,6 +13,7 @@
 #include "../src/grid.h"
 #include "../src/iconfile.h"
 #include "../src/npad.h"
+#include "../src/postcard.h"
 #include "../src/text.h"
 #include "../src/tracker.h"
 #include "../src/trkfile.h"
@@ -752,9 +753,10 @@ static int test_buttons_held_at_closing_stay_hidden_until_let_go(void)
 
 static int test_the_highlight_moves_over_the_regions_columns(void)
 {
-  /* 35 regions in 3 columns of 12: 0-11, 12-23, 24-34 */
-  browse_t b = { BROWSE_REGIONS, 0, 0, 0 };
-  CHECK(browse_region_rows(35) == 12 && browse_region_rows(36) == 12 && browse_region_rows(1) == 1);
+  /* 35 regions and the Postcard entry (35) in 3 columns of 12: 0-11, 12-23, 24-35 */
+  browse_t b = { BROWSE_REGIONS, 0, 0, 0, 0 };
+  CHECK(browse_region_rows(35) == 12 && browse_region_rows(36) == 13 && browse_region_rows(1) == 1);
+  CHECK(browse_region_rows(0) == 1);
   browse_move(&b, NAV_UP, 35, 0);
   CHECK(b.region == 0); /* the first stays */
   browse_move(&b, NAV_LEFT, 35, 0);
@@ -774,21 +776,26 @@ static int test_the_highlight_moves_over_the_regions_columns(void)
   CHECK(b.region == 12); /* down from a column's foot: the next column's head */
   b.region = 23;
   browse_move(&b, NAV_RIGHT, 35, 0);
-  CHECK(b.region == 34); /* the shorter last column: its last region */
+  CHECK(b.region == 35); /* the last column's foot: the Postcard entry */
   browse_move(&b, NAV_DOWN, 35, 0);
-  CHECK(b.region == 34);
-  browse_move(&b, NAV_DOWN, 0, 0); /* no regions: nothing moves */
-  CHECK(b.region == 34);
-  browse_show_regions(&b, 20); /* fewer regions than the highlight: kept inside */
-  CHECK(b.view == BROWSE_REGIONS && b.region == 19);
+  CHECK(b.region == 35);
+  b.region = 5; /* 7 regions and the Postcard entry: columns of 3, 3 and 2 */
+  browse_move(&b, NAV_RIGHT, 7, 0);
+  CHECK(b.region == 7); /* the shorter last column: its last entry */
+  b.region = 0;
+  browse_move(&b, NAV_DOWN, 0, 0); /* no regions: the Postcard entry is the only one */
+  CHECK(b.region == 0);
+  b.region = 35;
+  browse_show_regions(&b, 20); /* fewer regions than the highlight: kept inside, at the Postcard entry */
+  CHECK(b.view == BROWSE_REGIONS && b.region == 20);
   return 0;
 }
 
 static int test_a_list_opens_scrolls_and_goes_back(void)
 {
-  browse_t b = { BROWSE_REGIONS, 4, 7, 3 };
+  browse_t b = { BROWSE_REGIONS, 4, 7, 3, 0 };
   browse_open(&b, 3);
-  CHECK(b.view == BROWSE_REGIONS); /* the highlight is past the regions */
+  CHECK(b.view == BROWSE_REGIONS); /* the highlight is past the regions and the Postcard entry */
   b.region = 2;
   browse_open(&b, 3);
   CHECK(b.view == BROWSE_CHECKS && b.region == 2 && b.check == 0 && b.top == 0);
@@ -816,6 +823,182 @@ static int test_a_list_opens_scrolls_and_goes_back(void)
   browse_open(&b, 3);
   browse_move(&b, NAV_DOWN, 3, 0); /* an empty list */
   CHECK(b.check == 0 && b.top == 0);
+  return 0;
+}
+
+static int test_the_postcard_entry_opens_its_settings(void)
+{
+  browse_t b = { BROWSE_REGIONS, 3, 7, 3, 2 };
+  browse_open(&b, 3); /* the region count is the Postcard entry */
+  CHECK(b.view == BROWSE_POSTCARD && b.region == 3 && b.setting == 0);
+  browse_move(&b, NAV_UP, 3, 0);
+  CHECK(b.setting == 0);
+  for (int i = 0; i < POSTCARD_SETTING_COUNT + 2; i++)
+    browse_move(&b, NAV_DOWN, 3, 0);
+  CHECK(b.setting == POSTCARD_SETTING_COUNT - 1);
+  browse_move(&b, NAV_UP, 3, 0);
+  CHECK(b.setting == POSTCARD_SETTING_COUNT - 2);
+  browse_move(&b, NAV_LEFT, 3, 0); /* a value changes in app.c; the highlight stays */
+  browse_move(&b, NAV_RIGHT, 3, 0);
+  CHECK(b.setting == POSTCARD_SETTING_COUNT - 2 && b.view == BROWSE_POSTCARD);
+  browse_open(&b, 3); /* A in the settings does nothing */
+  CHECK(b.view == BROWSE_POSTCARD && b.setting == POSTCARD_SETTING_COUNT - 2);
+  CHECK(browse_back(&b) && b.view == BROWSE_REGIONS && b.region == 3);
+  CHECK(!browse_back(&b));
+  browse_open(&b, 3);
+  CHECK(b.setting == 0); /* opened afresh from the first setting */
+  return 0;
+}
+
+/* --- the postcard ------------------------------------------------------------------------------ */
+
+static int test_postcard_defaults_and_values(void)
+{
+  postcard_settings_t s = postcard_defaults();
+  CHECK(!s.shown && s.position == POSTCARD_BOTTOM_RIGHT && s.size == POSTCARD_SMALL);
+  CHECK(postcard_opacity(&s) == 0.5f);
+  CHECK(!strcmp(postcard_value_text(&s, POSTCARD_SETTING_SHOWN), "Off"));
+  CHECK(!strcmp(postcard_value_text(&s, POSTCARD_SETTING_POSITION), "Bottom right"));
+  CHECK(!strcmp(postcard_value_text(&s, POSTCARD_SETTING_SIZE), "Small"));
+  CHECK(!strcmp(postcard_value_text(&s, POSTCARD_SETTING_OPACITY), "50 %"));
+  CHECK(!strcmp(postcard_setting_name(POSTCARD_SETTING_SHOWN), "Postcard"));
+  CHECK(!strcmp(postcard_setting_name(POSTCARD_SETTING_POSITION), "Position"));
+  CHECK(!strcmp(postcard_setting_name(POSTCARD_SETTING_SIZE), "Size"));
+  CHECK(!strcmp(postcard_setting_name(POSTCARD_SETTING_OPACITY), "Opacity"));
+  CHECK(!strcmp(postcard_setting_name(POSTCARD_SETTING_COUNT), ""));
+  postcard_settings_t large = { true, POSTCARD_TOP_LEFT, POSTCARD_LARGE, 3 };
+  CHECK(postcard_scale(&large) == 1.0f && postcard_opacity(&large) == 1.0f);
+  CHECK(!strcmp(postcard_value_text(&large, POSTCARD_SETTING_SHOWN), "On"));
+  CHECK(!strcmp(postcard_value_text(&large, POSTCARD_SETTING_OPACITY), "100 %"));
+  CHECK(postcard_scale(&s) < 0.7f && postcard_scale(&s) > 0.3f); /* small is under the medium, which is under the large */
+  postcard_settings_t medium = { false, 0, POSTCARD_MEDIUM, 0 };
+  CHECK(postcard_scale(&s) < postcard_scale(&medium) && postcard_scale(&medium) < postcard_scale(&large));
+  CHECK(postcard_opacity(&medium) == 0.25f);
+  return 0;
+}
+
+static int test_postcard_settings_cycle_both_ways(void)
+{
+  postcard_settings_t s = postcard_defaults();
+  postcard_step(&s, POSTCARD_SETTING_SHOWN, 1);
+  CHECK(s.shown);
+  postcard_step(&s, POSTCARD_SETTING_SHOWN, -1);
+  CHECK(!s.shown);
+  postcard_step(&s, POSTCARD_SETTING_POSITION, 1); /* bottom right wraps to top left */
+  CHECK(s.position == POSTCARD_TOP_LEFT);
+  postcard_step(&s, POSTCARD_SETTING_POSITION, -1);
+  CHECK(s.position == POSTCARD_BOTTOM_RIGHT);
+  postcard_step(&s, POSTCARD_SETTING_SIZE, -1); /* small wraps back to large */
+  CHECK(s.size == POSTCARD_LARGE);
+  postcard_step(&s, POSTCARD_SETTING_SIZE, 1);
+  CHECK(s.size == POSTCARD_SMALL);
+  for (int i = 0; i < POSTCARD_OPACITY_COUNT; i++)
+    postcard_step(&s, POSTCARD_SETTING_OPACITY, 1);
+  CHECK(postcard_opacity(&s) == 0.5f); /* a full turn */
+  postcard_step(&s, POSTCARD_SETTING_OPACITY, 1);
+  CHECK(postcard_opacity(&s) == 0.75f);
+  postcard_step(&s, POSTCARD_SETTING_OPACITY, 1);
+  postcard_step(&s, POSTCARD_SETTING_OPACITY, 1);
+  CHECK(postcard_opacity(&s) == 0.25f); /* 100 % wraps to 25 % */
+  postcard_step(&s, POSTCARD_SETTING_OPACITY, -1);
+  CHECK(postcard_opacity(&s) == 1.0f);
+  postcard_step(&s, POSTCARD_SETTING_COUNT, 1); /* not a setting: nothing changes */
+  CHECK(!s.shown && s.position == POSTCARD_BOTTOM_RIGHT && s.size == POSTCARD_SMALL);
+  return 0;
+}
+
+static int test_the_postcard_sits_in_its_corner(void)
+{
+  float x, y;
+  const float area_w = 1920, area_h = 1080, card_w = 300, card_h = 200, margin = 24;
+  postcard_origin(POSTCARD_TOP_LEFT, area_w, area_h, card_w, card_h, margin, &x, &y);
+  CHECK(x == 24 && y == 24);
+  postcard_origin(POSTCARD_TOP_RIGHT, area_w, area_h, card_w, card_h, margin, &x, &y);
+  CHECK(x == 1596 && y == 24);
+  postcard_origin(POSTCARD_BOTTOM_LEFT, area_w, area_h, card_w, card_h, margin, &x, &y);
+  CHECK(x == 24 && y == 856);
+  postcard_origin(POSTCARD_BOTTOM_RIGHT, area_w, area_h, card_w, card_h, margin, &x, &y);
+  CHECK(x == 1596 && y == 856);
+  return 0;
+}
+
+static postcard_settings_t postcard_read(const char *text)
+{
+  postcard_settings_t s = postcard_defaults();
+  postcard_parse(&s, text, strlen(text));
+  return s;
+}
+
+static bool postcard_equal(postcard_settings_t a, postcard_settings_t b)
+{
+  return a.shown == b.shown && a.position == b.position && a.size == b.size && a.opacity == b.opacity;
+}
+
+static int test_postcard_file_text(void)
+{
+  char text[64];
+  postcard_settings_t defaults = postcard_defaults();
+  size_t length = postcard_format(&defaults, text, sizeof(text));
+  CHECK(length == strlen(text) && !strcmp(text, "postcard=0\nposition=3\nsize=0\nopacity=50\n"));
+  for (int combination = 0; combination < 2 * POSTCARD_POSITION_COUNT * POSTCARD_SIZE_COUNT * POSTCARD_OPACITY_COUNT;
+       combination++) {
+    postcard_settings_t s = { combination & 1, (uint8_t)(combination / 2 % POSTCARD_POSITION_COUNT),
+                              (uint8_t)(combination / 8 % POSTCARD_SIZE_COUNT),
+                              (uint8_t)(combination / 24 % POSTCARD_OPACITY_COUNT) };
+    postcard_settings_t read = { !s.shown, 1, 1, 1 };
+    postcard_format(&s, text, sizeof(text));
+    postcard_parse(&read, text, strlen(text));
+    CHECK(postcard_equal(read, s));
+  }
+  char small[16];
+  length = postcard_format(&defaults, small, sizeof(small)); /* only whole lines that fit, with their NUL */
+  CHECK(length < sizeof(small) && length == strlen(small) && !strcmp(small, "postcard=0\n"));
+  CHECK(postcard_format(&defaults, small, 0) == 0);
+  return 0;
+}
+
+static int test_postcard_file_tolerates_a_bad_file(void)
+{
+  postcard_settings_t defaults = postcard_defaults();
+  CHECK(postcard_equal(postcard_read(""), defaults));
+  CHECK(postcard_equal(postcard_read("\n\n"), defaults));
+  CHECK(postcard_equal(postcard_read("garbage without any sign"), defaults));
+  CHECK(postcard_equal(postcard_read("postcard=\nsize=x\nposition=-1\nopacity=5o\n=3\n"), defaults));
+  CHECK(postcard_equal(postcard_read("postcard=2\nposition=4\nsize=3\nopacity=60\nopacity=0\n"), defaults));
+  CHECK(postcard_equal(postcard_read("postcard=1\nposition=99999999999999\n"), (postcard_settings_t){ true, 3, 0, 1 }));
+  CHECK(postcard_equal(postcard_read("size=1\nunknown=1\nposition=0\n"), (postcard_settings_t){ false, 0, 1, 1 }));
+  CHECK(postcard_equal(postcard_read("postcard=1\r\nposition=1\r\nsize=2\r\nopacity=75"), (postcard_settings_t){ true, 1, 2, 2 }));
+  CHECK(postcard_equal(postcard_read("size=1\nsize=2\n"), (postcard_settings_t){ false, 3, 2, 1 })); /* the last of a name wins */
+  CHECK(postcard_equal(postcard_read("size=2\nsize=7\n"), (postcard_settings_t){ false, 3, 2, 1 })); /* a bad later line leaves it */
+  const char binary[] = { 'p', 'o', 's', 'i', 't', 'i', 'o', 'n', '=', '1', '\0', '2', '\n' };
+  postcard_settings_t s = defaults;
+  postcard_parse(&s, binary, sizeof(binary)); /* the NUL is not a digit: skipped */
+  CHECK(postcard_equal(s, defaults));
+  s = defaults;
+  postcard_parse(&s, "size=2\nopacity=100\n", 7); /* only the first line is in range */
+  CHECK(s.size == 2 && s.opacity == 1);
+  return 0;
+}
+
+static int test_the_icons_state_is_the_full_states_cells_and_keys(void)
+{
+  blob_t blob = synthetic();
+  trk_t trk;
+  const char *why = "";
+  CHECK(trk_parse(&trk, blob.bytes, blob.size, &why));
+  fake_flags_t fake = fake_with(GD_UNKNOWN);
+  set_bool(&fake, BOW_L1, GD_TRUE);
+  set_bool(&fake, BOOMERANG, GD_FALSE);
+  set_bool(&fake, FOREST_BOSS, GD_TRUE);
+  fake.ints[fake.int_count].hash = FOREST_FOUND;
+  fake.ints[fake.int_count++].value = 2;
+  tracker_state_t full, icons;
+  tracker_compute(&trk, &fake.source, &full);
+  tracker_compute_icons(&trk, &fake.source, &icons);
+  CHECK(!memcmp(full.cells, icons.cells, sizeof(full.cells)));
+  CHECK(full.key_count == 2 && icons.key_count == full.key_count);
+  CHECK(!memcmp(full.keys, icons.keys, 2 * sizeof(full.keys[0])));
+  CHECK(icons.region_count == 0 && icons.collected == 0 && icons.trackable == 0);
   return 0;
 }
 
@@ -1026,6 +1209,13 @@ static const test_t tests[] = {
   { "buttons_held_at_closing_stay_hidden_until_let_go", test_buttons_held_at_closing_stay_hidden_until_let_go, 0 },
   { "the_highlight_moves_over_the_regions_columns", test_the_highlight_moves_over_the_regions_columns, 0 },
   { "a_list_opens_scrolls_and_goes_back", test_a_list_opens_scrolls_and_goes_back, 0 },
+  { "the_postcard_entry_opens_its_settings", test_the_postcard_entry_opens_its_settings, 0 },
+  { "postcard_defaults_and_values", test_postcard_defaults_and_values, 0 },
+  { "postcard_settings_cycle_both_ways", test_postcard_settings_cycle_both_ways, 0 },
+  { "the_postcard_sits_in_its_corner", test_the_postcard_sits_in_its_corner, 0 },
+  { "postcard_file_text", test_postcard_file_text, 0 },
+  { "postcard_file_tolerates_a_bad_file", test_postcard_file_tolerates_a_bad_file, 0 },
+  { "the_icons_state_is_the_full_states_cells_and_keys", test_the_icons_state_is_the_full_states_cells_and_keys, 0 },
   { "grid_names_and_labels", test_grid_names_and_labels, 0 },
   { "text_helpers", test_text_helpers, 0 },
   { "icons_index_reads_every_entry", test_icons_index_reads_every_entry, 0 },

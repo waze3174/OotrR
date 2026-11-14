@@ -63,6 +63,22 @@ With a seed this version made from your game (or one updated with `update-tracke
 - Rename `icons.bin` and start the game again: the log says `no content:/RandoTracker/icons.bin: the items show as their letters` and the
   cells show their letters. Rename it back.
 
+## 3d. The postcard
+
+- The regions end with a **Postcard** entry (Off at first, dim); the highlight reaches it by down in the last column or right from
+  the one before. A opens four rows: Postcard, Position, Size, Opacity, with `< value >`; up and down choose, left and right change
+  the value at once (Position wraps, Opacity goes 25, 50, 75, 100 %). B goes back to the regions.
+- Turn it On: while the settings are shown the card appears in its corner (bottom right, small, 50 % by default) and follows each change
+  of position, size and opacity. It shows the items, the stones and medallions, and the dungeons' keys; a `?` where the game has no flag.
+- B twice (the panel closes): the card stays, in the same place, and the game still gets every button (move, camera, A, B).
+  Walk around and pick up an item: its cell lights within half a second.
+- Open the panel on the regions: the card is hidden meanwhile; close it: it comes back.
+- At 1080p small is about 340 pixels wide, medium 470, large 620; each reads at 1080p (the icons, the keys' counts). Check 720p too.
+- The opacity covers the box and the icons together (25 % is faint, 100 % is the box's own 86 %).
+- Quit the game and start it again: the log says `postcard:` lines only on a problem (`no SD card access`, or `no ... postcard.cfg: the
+  defaults` the first time); the settings come back as they were left, and the file is at `<user folder>/sdmc/ootrTracker/postcard.cfg`.
+  Delete it or fill it with junk: the defaults are used, nothing crashes.
+
 ## 4. What it shows
 
 Pick up things and compare with the desktop tracker (Real time mode) on the same save:

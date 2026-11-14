@@ -7,6 +7,8 @@
 #include "gamefile.h"
 #include "overlay.h"
 #include "panel.h"
+#include "postcard.h"
+#include "postcardfile.h"
 #include "sys.h"
 #include "text.h"
 #include "trackerui.h"
@@ -29,12 +31,15 @@ static struct {
   bool open;
   panel_mode_t last_mode;
   browse_t browse;
+  postcard_settings_t postcard;
+  bool postcard_changed; /* not yet written to the SD card */
   panel_t panel; /* the one shown: moving the highlight shows it again without working it all out anew */
 } app;
 
 /* Runs inside rtld's DT_INIT: checked reads and unformatted logging only. */
 void app_init(uintptr_t nnmain_address)
 {
+  app.postcard = postcard_defaults();
   app.game = builds_detect(nnmain_address);
   if (!app.game.build) {
     log_raw("this game build is not known: the panel will say so");
@@ -75,6 +80,8 @@ static bool ensure_seed(uint64_t now)
     return false;
   app.next_seed_try_ms = now + RETRY_SEED_MS;
   app.seed_loaded = load_seed();
+  if (app.seed_loaded)
+    postcardfile_load(&app.postcard);
   return app.seed_loaded;
 }
 
@@ -98,6 +105,7 @@ static panel_mode_t work_out(panel_t *panel)
 /* the highlight and, with a region's list open, the checks of it shown now */
 static void fill_browse(panel_t *panel)
 {
+  panel->postcard = app.postcard;
   panel->browse = app.browse;
   panel->row_count = 0;
   if (panel->mode == PANEL_TRACKING && app.browse.view == BROWSE_CHECKS)
@@ -110,12 +118,34 @@ static void refresh_panel(uint64_t now)
   panel_t *panel = &app.panel;
   memset(panel, 0, sizeof(*panel));
   text_copy(panel->seed_id, sizeof(panel->seed_id), trk_string(&app.seed, app.seed.seed_id));
+  panel->menu = true;
   panel->mode = work_out(panel);
   fill_browse(panel);
   overlay_publish(panel);
   if (panel->mode != app.last_mode)
     log_printf("panel: %s", mode_names[panel->mode]);
   app.last_mode = panel->mode;
+  app.next_refresh_ms = now + REFRESH_MS;
+}
+
+/* The postcard is drawn on its own while it's on and the panel is closed. */
+static bool postcard_wanted(void)
+{
+  return app.postcard.shown && app.seed_loaded && app.game.build && !app.open;
+}
+
+/* Only the items and keys are worked out for it; it is redrawn every frame from them. */
+static void refresh_postcard(uint64_t now)
+{
+  trackerui_load(); /* the game's font and shader, once: a pause the first time */
+  panel_t *panel = &app.panel;
+  memset(panel, 0, sizeof(*panel));
+  panel->postcard = app.postcard;
+  if (gamedata_attach(&app.data)) {
+    tracker_compute_icons(&app.seed, &app.data.source, &panel->state);
+    panel->mode = PANEL_TRACKING;
+  }
+  overlay_publish(panel);
   app.next_refresh_ms = now + REFRESH_MS;
 }
 
@@ -142,8 +172,24 @@ static void close_panel(void)
   memset(&hidden, 0, sizeof(hidden));
   app.open = false;
   app.last_mode = PANEL_HIDDEN;
+  app.next_refresh_ms = 0; /* the postcard, if it's on, comes back at the next frame */
   controls_hold_back_held();
   overlay_publish(&hidden);
+}
+
+static void change_postcard_setting(int direction)
+{
+  postcard_step(&app.postcard, (postcard_setting_t)app.browse.setting, direction);
+  app.postcard_changed = true;
+}
+
+/* The settings are written when their page is left (or the panel closed), not at each change. */
+static void save_postcard_changes(void)
+{
+  if (!app.postcard_changed || (app.open && app.browse.view == BROWSE_POSTCARD))
+    return;
+  app.postcard_changed = false;
+  postcardfile_save(&app.postcard);
 }
 
 static uint32_t highlighted_region_checks(void)
@@ -160,6 +206,8 @@ static void navigate(control_t command)
     return;
   if (command == CONTROL_SELECT)
     browse_open(&app.browse, app.seed.region_count);
+  else if (app.browse.view == BROWSE_POSTCARD && (command == CONTROL_LEFT || command == CONTROL_RIGHT))
+    change_postcard_setting(command == CONTROL_RIGHT ? 1 : -1);
   else
     browse_move(&app.browse, navs[command], app.seed.region_count, highlighted_region_checks());
   show_browse();
@@ -198,8 +246,13 @@ void app_frame(uint32_t held)
     ensure_seed(now);
   }
   run(controls_frame(held, app.open, now), now);
-  if (app.open && now >= app.next_refresh_ms)
+  save_postcard_changes();
+  if (now < app.next_refresh_ms)
+    return;
+  if (app.open)
     refresh_panel(now);
+  else if (postcard_wanted())
+    refresh_postcard(now);
 }
 
 void app_edit_state(npad_state_t *state)

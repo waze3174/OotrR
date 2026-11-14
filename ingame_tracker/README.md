@@ -16,23 +16,46 @@ save has found:
 - the checks found, per region and in total, as `collected / trackable` (a check without a save flag can't be
   observed, so it isn't counted), and the enemy souls if the seed has them;
 - each region's checks by name, ticked when collected, so you can see what's still missing there;
-- the seed's id, a warning when the save isn't from this seed, and "Goal reached".
+- the seed's id, a warning when the save isn't from this seed, and "Goal reached";
+- a **postcard**: a small card with only the icons (items, temples, dungeon keys) in a corner of the screen while you play.
 
-Version 0.2.1. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
+Version 0.3.0. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Controls
 
 | | |
 |---|---|
 | R + right stick up | open the panel, or close it |
-| D-pad or left stick | move the highlight over the regions; in a region's list, scroll (left and right: a page). Held, it repeats |
-| A | open the highlighted region's list of checks |
+| D-pad or left stick | move the highlight over the regions and the Postcard entry after them; in a region's list, scroll (left and right: a page). Held, it repeats |
+| A | open the highlighted region's list of checks, or the postcard's settings |
 | B | back to the regions, or close the panel |
+| D-pad or left stick, in the postcard's settings | up and down choose a setting, left and right change its value |
 
 While the panel is open the game doesn't see R, the right stick (so the camera stays still), A, B, the D-pad or the left
 stick (Link stands still); while the combination is held, it doesn't see R or the right stick. A button still held when the
 panel closes stays hidden from the game until it's let go, so closing with B doesn't also swing the sword. R + right stick
 down is sloperinaGZ's menu and is left alone.
+
+## The postcard
+
+The last entry of the regions is **Postcard** (On or Off). A on it opens its settings:
+
+| Setting | Values | Default |
+|---|---|---|
+| Postcard | On, Off | Off |
+| Position | Top left, Top right, Bottom left, Bottom right | Bottom right |
+| Size | Small, Medium, Large | Small |
+| Opacity | 25 %, 50 %, 75 %, 100 % | 50 % |
+
+Left and right change the chosen setting at once, and while the settings are shown the card is drawn so you see what they do.
+With the postcard on and the panel closed, the card is drawn in its corner every frame: the items' grid (with the stones and
+medallions) over the dungeons' keys (medallion, small keys found out of the total, boss key), with the same icons and `?` marks
+as the panel and no text lists. It takes no input and the game keeps every button. The opacity is the whole card's, its box and its
+icons. At 1080p the card is about 340 pixels wide when small, 470 medium and 620 large.
+
+The settings are saved on the SD card, in `ootrTracker/postcard.cfg` (in an emulator, `<user folder>/sdmc/ootrTracker/postcard.cfg`),
+when the settings are left or the panel is closed, and read when the seed's file is loaded at start. A missing or damaged file
+means the defaults. If the SD card can't be mounted, the settings last until the game is closed.
 
 ## What it needs
 
@@ -44,7 +67,8 @@ out, turn off "In-game tracker" in OotrR's install options (or pass `--no-ingame
 "Update the in-game tracker" (or `update-tracker`, with `--nup GAME.nup` for the icons) puts a newer build in an
 installed seed.
 
-It reads the game's save data (GameData) in place and never writes to it or calls a game function. It knows main's
+It reads the game's save data (GameData) in place and never writes to it or calls a game function. The only thing it writes is its
+own postcard settings file on the SD card. It knows main's
 layout for the game builds 1.0.0 and 1.1.1; on another build the panel says "Game version not supported" and nothing
 else is read. It draws with the game's own font and UI shader, read from the game's RomFS when the panel is first
 opened (nothing of the game ships here), so the first opening pauses for a moment.

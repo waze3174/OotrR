@@ -84,7 +84,9 @@ the game's own style: press **R + right stick up** to open it and again (or **B*
 items (with the game's own icons and their levels), the dungeons' small keys and boss keys, the checks found per region and in total,
 the enemy souls, and a warning when the loaded save is not from this seed. The D-pad or the left stick moves
 over the regions, **A** opens a region's checks by name (ticked when collected), **B** goes back. While it is
-open the game does not see R, the right stick, A, B, the D-pad or the left stick. It only reads the game's
+open the game does not see R, the right stick, A, B, the D-pad or the left stick. The last entry of the
+regions, **Postcard**, turns on a small card with only the icons (items, temples, dungeon keys) in a corner of the screen; its
+position, size and opacity are set there and kept in a small file on the SD card. It only reads the game's
 save data; it never changes the game or the save.
 
 The seed folder gets `romfs/RandoTracker/seed.trk` (the flags to watch, no item placements; the format is in

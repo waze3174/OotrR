@@ -1,20 +1,27 @@
 #include "browse.h"
 
+/* the regions, then the Postcard entry */
+static uint32_t entry_count(uint32_t region_count)
+{
+  return region_count + 1;
+}
+
 uint32_t browse_region_rows(uint32_t region_count)
 {
-  return (region_count + BROWSE_REGION_COLUMNS - 1) / BROWSE_REGION_COLUMNS;
+  return (entry_count(region_count) + BROWSE_REGION_COLUMNS - 1) / BROWSE_REGION_COLUMNS;
 }
 
 void browse_show_regions(browse_t *browse, uint32_t region_count)
 {
   browse->view = BROWSE_REGIONS;
-  if (browse->region >= region_count)
-    browse->region = region_count ? region_count - 1 : 0;
+  if (browse->region > region_count)
+    browse->region = region_count;
 }
 
-static void move_over_regions(browse_t *browse, nav_t nav, uint32_t count)
+static void move_over_regions(browse_t *browse, nav_t nav, uint32_t region_count)
 {
-  uint32_t rows = browse_region_rows(count), at = browse->region;
+  uint32_t count = entry_count(region_count);
+  uint32_t rows = browse_region_rows(region_count), at = browse->region;
   if (nav == NAV_UP && at > 0)
     browse->region = at - 1;
   else if (nav == NAV_DOWN && at + 1 < count)
@@ -45,18 +52,33 @@ static void move_over_checks(browse_t *browse, nav_t nav, uint32_t count)
     browse->top = at - BROWSE_CHECK_ROWS + 1;
 }
 
+static void move_over_settings(browse_t *browse, nav_t nav)
+{
+  if (nav == NAV_UP && browse->setting > 0)
+    browse->setting--;
+  else if (nav == NAV_DOWN && browse->setting + 1 < POSTCARD_SETTING_COUNT)
+    browse->setting++;
+}
+
 void browse_move(browse_t *browse, nav_t nav, uint32_t region_count, uint32_t check_count)
 {
   if (browse->view == BROWSE_CHECKS)
     move_over_checks(browse, nav, check_count);
-  else if (region_count)
+  else if (browse->view == BROWSE_POSTCARD)
+    move_over_settings(browse, nav);
+  else
     move_over_regions(browse, nav, region_count);
 }
 
 void browse_open(browse_t *browse, uint32_t region_count)
 {
-  if (browse->view != BROWSE_REGIONS || browse->region >= region_count)
+  if (browse->view != BROWSE_REGIONS || browse->region > region_count)
     return;
+  if (browse->region == region_count) {
+    browse->view = BROWSE_POSTCARD;
+    browse->setting = 0;
+    return;
+  }
   browse->view = BROWSE_CHECKS;
   browse->check = browse->top = 0;
 }

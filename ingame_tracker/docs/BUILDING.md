@@ -41,7 +41,7 @@ In the emulator's log, at boot:
 ```
 ootrTracker: game build:
 ootrTracker: 1.1.1
-ootrTracker: loaded 0.2.1 (...); controller hooks go in at the game's first controller setup
+ootrTracker: loaded 0.3.0 (...); controller hooks go in at the game's first controller setup
 ootrTracker: GetNpadStates style 0 hooked from InitializeNpad: calls the sdk at 0x...
 ...
 ootrTracker: counting frames from reads of controller style 0, NpadIdType 0x0

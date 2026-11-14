@@ -52,6 +52,8 @@ typedef struct {
 } check_row_t;
 
 void tracker_compute(const trk_t *seed, const flag_source_t *flags, tracker_state_t *state);
+/* Only what the postcard shows: the items and the dungeons' keys (not the regions' checks, the largest part). */
+void tracker_compute_icons(const trk_t *seed, const flag_source_t *flags, tracker_state_t *state);
 /* Up to `room` of region `region`'s checks from its `first`; how many were filled. */
 uint32_t tracker_check_rows(const trk_t *seed, const flag_source_t *flags, uint32_t region, uint32_t first,
                             check_row_t *rows, uint32_t room);
