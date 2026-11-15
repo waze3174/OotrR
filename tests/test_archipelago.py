@@ -168,6 +168,13 @@ class WithGame(unittest.TestCase):
         self.assertEqual(len(set(bridge.location_ids(self.catalog).values())), len(self.catalog['locations']))
         self.assertEqual(self.catalog['scan'], bridge.scan_fingerprint(self.groups, self.enemies, self.extra))
 
+    def test_catalog_covers_song_shuffle(self):
+        # The beta's song shuffle adds the song locations; an apworld without them refused to generate.
+        for songs in ('shuffled', 'dungeon'):
+            world = bridge.PlayerWorld(self.catalog, dict(self.values, shuffle_song_items=songs), 'archipelago|test|3')
+            self.assertTrue(any(g.startswith('song#') for g in world.names), songs)
+            self.assertTrue(set(world.names) <= set(self.catalog['locations']), songs)
+
     def test_rules_and_victory(self):
         world = self.player()
         nothing, beaten = world.reach(Counter())

@@ -136,7 +136,8 @@ def _catalog_variants():
                       shuffle_npc_gifts=True, shuffle_boss_rewards=True, shuffle_great_fairies=True,
                       shuffle_quest_rewards=True, shuffle_pots='all', shuffle_crates='all', shuffle_beehives=True,
                       shuffle_bushes=True, shuffle_rocks=True, shuffle_trees=True, shuffle_mapcompass='dungeon',
-                      shuffle_smallkeys='keysanity', shuffle_bosskeys='keysanity')
+                      shuffle_smallkeys='keysanity', shuffle_bosskeys='keysanity',
+                      shuffle_song_items='any')
     for matching in ('strict', 'scene'):
         for spawns in ('off', 'bosses', 'regional', 'all'):
             for rings in ('off', 'all'):
