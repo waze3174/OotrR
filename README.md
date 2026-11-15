@@ -181,8 +181,9 @@ world, with the same locations, item pool and glitchless rules as the built-in f
 
 **In-game console.** While the client is connected and the emulator runs the seed (in-game tracker
 0.5.0 or later; Windows, or a native Linux emulator), the room's messages show over the game: items you
-receive (gold) and send (green), hints (blue), chat (white) and the server's notices (grey), each fading
-after 10 s. A line at the bottom says when the client is connecting, not connected, or not running.
+receive (gold) and send (green), other players' items (lavender, 0.6.0 and later), hints (blue), chat
+(white) and the server's notices (grey), each fading after 10 s. A line at the bottom says when the
+client is connecting, not connected, or not running.
 The client writes them into the in-game tracker's memory; Settings > Console in the game's tracker
 turns it off or changes its place, size and fading. Characters the game's font lacks show as `?`.
 

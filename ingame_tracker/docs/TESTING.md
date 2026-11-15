@@ -1,6 +1,6 @@
 # Live test plan
 
-Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.5.0 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 to 3), the state, a
+Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.6.0 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 to 3), the state, a
 region's list of checks, the game-data reader over a fake GameData, the controls (repeat, what the game doesn't see), the browsing, the
 icons file's index, the postcard's and the console's settings and files, the console's lines and fading, its mailbox (half-written
 writes, a full ring, the status line) and where the console goes next to every postcard. OotrR's `tests/test_console_bridge.py` covers
@@ -104,10 +104,10 @@ With a seed made or updated by 0.4.0, and `icons.bin` made from the game (`updat
   `update-tracker` the songs are tracked; its pictures need `--nup`.
 - Rename `icons.bin`: the songs show their letters (Mi, Bo, Se, Re, No, Pr, Lu, Ep, Sa, Su, ST, SS).
 
-## 3f. The console (0.5.0)
+## 3f. The console (0.5.0; other players' items 0.6.0)
 
-Needs an Archipelago seed made or updated by 0.5.0 (`update-tracker`), OotrR's Archipelago client (the application's Archipelago
-page, or `ap-client`) on the same PC as the emulator, and a room to join. A second player (or a second slot of the same room in
+Needs an Archipelago seed made or updated by 0.5.0 (`update-tracker`; 0.6.0 for other players' items), OotrR's Archipelago
+client (the application's Archipelago page, or `ap-client`) on the same PC as the emulator, and a room to join. A second player (or a second slot of the same room in
 Archipelago's own text client) helps to send items and chat.
 
 - Boot the seed: the log's seed line ends `, an Archipelago seed`. With no client running, about 10 s after that line the bottom of
@@ -117,7 +117,12 @@ Archipelago's own text client) helps to send items and chat.
   "Archipelago client not running" comes back after about 10 s.
 - Messages: have the other player send you an item (a gold line "<player> sent <item> to you ..."), find one of theirs (a green
   line), type a chat line on either side (white), `!hint <item>` (blue) and watch a join or a part (grey). Each shows within about a
-  second, wraps if long, fades after 10 s. An item between two other players is not shown.
+  second, wraps if long, fades after 10 s.
+- Other players' items (0.6.0): with three players, or two where one finds their own item, an item that is neither for you nor
+  found by you shows as a lavender line. Untick "Other players' items" on the Messages page (the sixth row; the Messages row then
+  says "5 of 6"): those lines go, the rest stay. A `console.cfg` written by 0.5.0 (no `others=` line) keeps its ticks and shows
+  other players' items; after leaving the console's pages the file has an `others=` line. A seed still on 0.5.0 (not updated) shows
+  none of them, not even as server notices.
 - The game keeps every button while the console shows; it never covers the panel (closed while the panel is open, except as the
   preview).
 - Settings > Console: Console On (an Archipelago seed's default), Position, Opacity, Lines, Fade, Messages. While this page or the

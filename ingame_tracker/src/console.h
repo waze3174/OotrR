@@ -9,9 +9,10 @@
 #include <stdint.h>
 
 typedef enum { CONSOLE_BOTTOM, CONSOLE_TOP, CONSOLE_LEFT, CONSOLE_RIGHT, CONSOLE_POSITION_COUNT } console_position_t;
-/* the kinds of message, as the mailbox numbers them less one (mailbox.h) */
+/* the kinds of message, as the mailbox numbers them less one (mailbox.h); a new kind goes last, so that the mailbox's
+ * numbers and the bits of saved settings keep their meaning */
 typedef enum {
-  CONSOLE_RECEIVED, CONSOLE_SENT, CONSOLE_HINT, CONSOLE_CHAT, CONSOLE_SERVER, CONSOLE_KIND_COUNT,
+  CONSOLE_RECEIVED, CONSOLE_SENT, CONSOLE_HINT, CONSOLE_CHAT, CONSOLE_SERVER, CONSOLE_OTHERS, CONSOLE_KIND_COUNT,
 } console_kind_t;
 /* the Console page's rows, in order; the last opens the Messages page */
 typedef enum {
@@ -30,7 +31,8 @@ typedef struct {
   uint8_t kinds;    /* a bit per console_kind_t: shown */
 } console_settings_t;
 
-/* Off for local seeds, on for Archipelago ones; bottom centre, 75 %, 6 lines, 10 s, every kind. */
+/* Off for local seeds, on for Archipelago ones; bottom centre, 75 %, 6 lines, 10 s, every kind. A file without a
+ * kind's line (one written before that kind came) leaves it at this default. */
 console_settings_t console_defaults(void);
 bool console_shown(const console_settings_t *settings, bool archipelago);
 bool console_kind_shown(const console_settings_t *settings, console_kind_t kind);
@@ -40,7 +42,7 @@ void console_step(console_settings_t *settings, console_setting_t setting, int d
 void console_toggle_kind(console_settings_t *settings, console_kind_t kind);
 
 const char *console_setting_name(console_setting_t setting);
-/* A setting's value as the page shows it ("On", "Bottom centre", "75 %", "6", "10 s", "All", "3 of 5"). */
+/* A setting's value as the page shows it ("On", "Bottom centre", "75 %", "6", "10 s", "All", "3 of 6"). */
 const char *console_value_text(const console_settings_t *settings, console_setting_t setting, bool archipelago);
 const char *console_kind_name(console_kind_t kind);
 

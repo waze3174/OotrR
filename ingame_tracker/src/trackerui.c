@@ -77,7 +77,7 @@ static const rgb_t done_colour = { 0x9A, 0xDF, 0x9A };
 static const rgb_t notice_colour = { 0xC4, 0xBE, 0xB2 };
 static const rgb_t kind_colours[CONSOLE_KIND_COUNT] = {
   [CONSOLE_RECEIVED] = { 0xF5, 0xD6, 0x85 }, [CONSOLE_SENT] = { 0x9A, 0xDF, 0x9A }, [CONSOLE_HINT] = { 0x9C, 0xC8, 0xFF },
-  [CONSOLE_CHAT] = { 0xEC, 0xE8, 0xDE }, [CONSOLE_SERVER] = { 0xC4, 0xBE, 0xB2 },
+  [CONSOLE_CHAT] = { 0xEC, 0xE8, 0xDE }, [CONSOLE_SERVER] = { 0xC4, 0xBE, 0xB2 }, [CONSOLE_OTHERS] = { 0xC8, 0xB4, 0xE6 },
 };
 static const gpu_colour_t icon_owned = { 1, 1, 1, 1 };
 static const gpu_colour_t icon_missing = { 0.55f, 0.55f, 0.55f, 0.4f };
@@ -511,6 +511,8 @@ static setting_row_t settings_entry(const panel_t *panel, settings_entry_t entry
   return (setting_row_t){ console_setting_name(CONSOLE_SETTING_SHOWN),
                           console_value_text(&panel->console, CONSOLE_SETTING_SHOWN, panel->archipelago), false, false };
 }
+
+_Static_assert((int)CONSOLE_KIND_COUNT <= (int)CONSOLE_SETTING_COUNT, "the Messages page's rows fit the settings pages' array");
 
 /* the rows of the settings page shown, and its title; returns how many */
 static uint32_t page_rows(const panel_t *panel, setting_row_t rows[CONSOLE_SETTING_COUNT], const char **title)

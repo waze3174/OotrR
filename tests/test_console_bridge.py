@@ -63,11 +63,11 @@ def module(size, bss, signature=b'', data=b'', data_at=0):
     return bytes(image)
 
 
-def blank_mailbox(seed=SEED):
+def blank_mailbox(seed=SEED, module_version=0x000500):
     box = bytearray(cb.HEADER_SIZE + cb.CAPACITY * cb.ENTRY_SIZE)
     struct.pack_into('<8sHHHH', box, 0, cb.MAGIC, cb.VERSION, cb.HEADER_SIZE, cb.CAPACITY, cb.ENTRY_SIZE)
     box[cb.SEED_ID:cb.SEED_ID + len(seed)] = seed.encode()
-    struct.pack_into('<I', box, cb.MODULE_VERSION, 0x000500)
+    struct.pack_into('<I', box, cb.MODULE_VERSION, module_version)
     return bytes(box)
 
 
@@ -76,7 +76,7 @@ TRACKER = MAIN + 0x6000 + 0x2000 + 2 * PAGE   # after main (5 pages + 1 of bss),
 MAILBOX_AT = 0x3010
 
 
-def game(seed=SEED, tracker=True):
+def game(seed=SEED, tracker=True, module_version=0x000500):
     """Main, a subsdk0 holding the magic too (not the tracker's), a gap, the tracker module."""
     memory = FakeMemory(MAIN)
     memory.map(MAIN, module(0x5000, 0x1000))
@@ -84,7 +84,7 @@ def game(seed=SEED, tracker=True):
     if tracker:
         decoy = b'xx' + cb.MAGIC   # not aligned: not a mailbox
         image = bytearray(module(0x5000 + len(blank_mailbox()), 0x3000, cb.MODULE_SIGNATURE,
-                                 blank_mailbox(seed), MAILBOX_AT))
+                                 blank_mailbox(seed, module_version), MAILBOX_AT))
         image[0x2000:0x2000 + len(decoy)] = decoy
         memory.map(TRACKER, bytes(image))
     return memory
@@ -130,7 +130,11 @@ class Layout(unittest.TestCase):
         self.assertIn(".magic = { 'O', 'O', 'T', 'R', 'C', 'O', 'N', '1' }",
                       (MAILBOX_H.parent / 'mailbox.c').read_text(encoding='utf-8'))
         console_h = (MAILBOX_H.parent / 'console.h').read_text(encoding='utf-8')
-        self.assertIn('CONSOLE_RECEIVED, CONSOLE_SENT, CONSOLE_HINT, CONSOLE_CHAT, CONSOLE_SERVER', console_h)
+        self.assertIn('CONSOLE_RECEIVED, CONSOLE_SENT, CONSOLE_HINT, CONSOLE_CHAT, CONSOLE_SERVER, CONSOLE_OTHERS, '
+                      'CONSOLE_KIND_COUNT', console_h)
+        self.assertEqual(int(defines['MAILBOX_MODULE_VERSION'], 0), cb.OTHERS_MODULE_VERSION)
+        kinds = re.search(r'typedef enum \{\s*(CONSOLE_RECEIVED[^}]*?),\s*CONSOLE_KIND_COUNT', console_h).group(1)
+        self.assertEqual(len(kinds.split(',')), cb.KIND_COUNT)
         crt0 = (MAILBOX_H.parent / 'crt0.S').read_text(encoding='utf-8')
         self.assertIn('.ascii  "OOTRTRK\\0"', crt0)   # the signature at the module's start + 8
 
@@ -139,7 +143,8 @@ class Layout(unittest.TestCase):
         self.assertEqual(cb.classify(item(2, 1), 1), cb.KIND_RECEIVED)
         self.assertEqual(cb.classify(item(1, 1), 1), cb.KIND_RECEIVED)   # found in this world
         self.assertEqual(cb.classify(item(1, 3), 1), cb.KIND_SENT)
-        self.assertIsNone(cb.classify(item(2, 3), 1))                    # between two others
+        self.assertEqual(cb.classify(item(2, 3), 1), cb.KIND_OTHERS)     # between two others
+        self.assertEqual(cb.classify(item(2, 2), 1), cb.KIND_OTHERS)     # another found their own
         self.assertEqual(cb.classify({**item(2, 1), 'type': 'ItemCheat'}, 1), cb.KIND_RECEIVED)
         self.assertEqual(cb.classify({'type': 'Hint', 'receiving': 1, 'item': {'player': 2}}, 1), cb.KIND_HINT)
         for kind in ('Chat', 'ServerChat'):
@@ -241,6 +246,20 @@ class Writing(unittest.TestCase):
         self.assertEqual(entries(memory)[-1], (cb.KIND_SERVER, f'notice {cb.CAPACITY + 9}'))
         self.assertEqual(box.waiting(), 0)
 
+    def test_other_players_items_go_only_to_a_module_that_knows_them(self):
+        for version, expected in ((0x000600, [(cb.KIND_CHAT, 'Zelda: hi'), (cb.KIND_OTHERS, 'Saria found her Bow'),
+                                              (cb.KIND_SERVER, 'Saria joined')]),
+                                  (0x000500, [(cb.KIND_CHAT, 'Zelda: hi'), (cb.KIND_SERVER, 'Saria joined')])):
+            with self.subTest(hex(version)):
+                memory = game(module_version=version)
+                box = cb.ConsoleMailbox(SEED, memory)
+                for kind, line in ((cb.KIND_CHAT, 'Zelda: hi'), (cb.KIND_OTHERS, 'Saria found her Bow'),
+                                   (cb.KIND_SERVER, 'Saria joined')):
+                    box.add(kind, line)
+                self.assertTrue(box.step())
+                self.assertEqual(entries(memory), expected)
+                self.assertEqual(box.waiting(), 0)
+
     def test_another_seed_or_no_seed_yet_gets_nothing(self):
         for seed, state in (('0123456789abcdef', 'another seed'), ('', 'not read its seed')):
             memory = game(seed)
@@ -332,8 +351,9 @@ class ClientFeed(unittest.TestCase):
                     {'cmd': 'PrintJSON', 'type': 'ItemSend', 'receiving': 3, 'item': {'player': 2, 'item': 7},
                      'data': [{'text': 'Ami sent Bow to Someone'}]},
                     {'cmd': 'PrintJSON', 'type': 'Chat', 'data': [{'text': 'Ami: hello'}]})
-        self.assertTrue(wait(lambda: len(console.lines) == 2))
-        self.assertEqual(console.lines, [(cb.KIND_RECEIVED, 'Ami sent you a Bow'), (cb.KIND_CHAT, 'Ami: hello')])
+        self.assertTrue(wait(lambda: len(console.lines) == 3))
+        self.assertEqual(console.lines, [(cb.KIND_RECEIVED, 'Ami sent you a Bow'), (cb.KIND_OTHERS, 'Ami sent Bow to Someone'),
+                                         (cb.KIND_CHAT, 'Ami: hello')])
         self.assertTrue(wait(lambda: (cb.STATUS_CONNECTED, 'localhost:38281 as Moi') in console.statuses))
         client.stop()
         self.assertTrue(wait(lambda: console.statuses[-1] == (cb.STATUS_DISCONNECTED, '')))

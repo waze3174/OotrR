@@ -3,7 +3,7 @@
 #include "sdfile.h"
 
 #define SETTINGS_FILE SDFILE_DIR "/console.cfg"
-#define FILE_ROOM     256 /* twelve short lines */
+#define FILE_ROOM     256 /* thirteen short lines */
 
 void consolefile_load(console_settings_t *settings)
 {
