@@ -204,7 +204,7 @@ OPTIONS = [
            'Vanilla cutscene kept, only the item given changes. To be validated in game. Out of scope: trade items, songs.', kind='bool', experimental=(True,)),
     Option('shuffle_pots', 'Items', 'Pots (as checks)',
            (('off', 'Vanilla', OK), ('all', 'All', OK)), 'off',
-           PILOT + ' Only pots with an explicit drop; once its check is collected, a respawned pot drops nothing until the area is loaded again (then vanilla).',
+           PILOT + ' Only pots with an explicit drop; a pot respawns as in the game; once its check is collected, it drops nothing more.',
            experimental=('all',)),
     Option('shuffle_crates', 'Items', 'Crates (as checks)',
            (('off', 'Vanilla', OK), ('all', 'All', OK)), 'off', PILOT, experimental=('all',)),

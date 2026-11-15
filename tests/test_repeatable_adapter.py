@@ -8,29 +8,10 @@ from oot_rando.formats import byml_codec
 from oot_rando.patching.repeatable_adapter import (prepare_repeatables, patch_repeatable_sources,
                                 instrument_pickup_event, register_repeatable_flags,
                                 add_sold_out_board, limit_shop_stock, shop_stock_edits)
-from oot_rando.formats.inspect_resources import sarc, decompress, Byml
+from oot_rando.formats.inspect_resources import sarc, decompress
 
 
 class RepeatableSourceTests(unittest.TestCase):
-    def test_real_map_plain_reader_does_not_lose_uint64_types_or_self_links(self):
-        plan, maps = self.fixtures()
-        document = byml_codec.load(maps['map']['raw'])
-        actor = document['root']['Actors'][0]
-        actor['Links'] = [{'Name': 'Cut', 'Src': actor['Hash'], 'Dst': byml_codec.U64(2**63+3)}]
-        actor['Phive'] = {'Placement': {'ID': actor['Hash']}}
-        raw = byml_codec.dump(document)
-        # The world scanner uses the plain reader; the writer must recover typed scalars.
-        maps['map'] = {'raw': raw, 'root': Byml(raw).root}
-        records = prepare_repeatables(plan, maps)
-        output = {}
-        patch_repeatable_sources(records, maps, output)
-        fallback = byml_codec.load(output['map'])['root']['Actors'][1]
-        self.assertEqual(fallback['Links'][0]['Src'], fallback['Hash'])
-        self.assertEqual(fallback['Links'][0]['Dst'], 2**63+3)
-        # The clone keeps the original's physics placement (its static compound entry).
-        self.assertNotEqual(fallback['Hash'], actor['Hash'])
-        self.assertEqual(fallback['Phive']['Placement']['ID'], actor['Hash'])
-
     def fixtures(self, original_presence=None, explicit=True):
         actor = {'Hash': byml_codec.U64(98765432123456789), 'Gyaml': 'Obj_Pot_A_01',
                  'Translate': [1., 2., 3.], 'Dynamic': {'Drop__DropTable': 'original-table'}}
@@ -47,36 +28,30 @@ class RepeatableSourceTests(unittest.TestCase):
                 'matches': {}}
         return plan, maps
 
-    def test_first_and_later_sources_have_complementary_saved_conditions(self):
-        plan, maps = self.fixtures()
-        records = prepare_repeatables(plan, maps)
-        patched = copy.deepcopy(maps['map']['root'])
-        patched['Actors'][0]['Dynamic']['Drop__DropActor'] = records[0]['actor']
-        raw_maps = {'map': byml_codec.dump({'root': patched, 'endian': '<', 'version': 7})}
-        patch_repeatable_sources(records, maps, raw_maps)
-        result = byml_codec.load(raw_maps['map'])['root']['Actors']
-        self.assertEqual(len(result), 2)
-        first, fallback = result
-        self.assertEqual(first['Dynamic']['Drop__DropActor'], records[0]['actor'])
-        self.assertEqual(fallback['Dynamic'], maps['map']['root']['Actors'][0]['Dynamic'])
-        self.assertNotEqual(first['Hash'], fallback['Hash'])
-        self.assertEqual(first['Presence']['FlagName'], fallback['Presence']['FlagName'])
-        self.assertTrue(first['Presence']['IsNegation'])
-        self.assertFalse(fallback['Presence']['IsNegation'])
-        # Lazy: the vanilla source comes back on the next area load, not at once.
-        self.assertTrue(first['Presence']['IsCheckLazy'])
-        self.assertTrue(fallback['Presence']['IsCheckLazy'])
-        self.assertEqual(plan['placements'][0]['reward_actor'], 'Obj_Rando_Item_BombBag_Small')
-        self.assertNotIn('Presence', maps['map']['root']['Actors'][0])
-
-    def test_original_empty_drop_is_restored_without_inventing_rupee(self):
-        plan, maps = self.fixtures(explicit=False)
-        records = prepare_repeatables(plan, maps)
-        raw_maps = {}
-        patch_repeatable_sources(records, maps, raw_maps)
-        fallback = byml_codec.load(raw_maps['map'])['root']['Actors'][1]
-        self.assertNotIn('Drop__DropActor', fallback['Dynamic'])
-        self.assertEqual(fallback['Dynamic']['Drop__DropTable'], 'original-table')
+    def test_shuffled_source_keeps_its_map_entry_but_for_its_drop(self):
+        """No Presence and no vanilla copy: the game remembers a broken source by its
+        hash until the scene changes, as for the vanilla one."""
+        for explicit in (True, False):
+            with self.subTest(explicit=explicit):
+                plan, maps = self.fixtures(explicit=explicit)
+                actor = maps['map']['root']['Actors'][0]
+                actor['Links'] = [{'Name': 'Cut', 'Src': actor['Hash'], 'Dst': byml_codec.U64(2**63+3)}]
+                actor['Phive'] = {'Placement': {'ID': actor['Hash']}}
+                maps['map']['raw'] = byml_codec.dump({'root': maps['map']['root'], 'endian': '<', 'version': 7})
+                records = prepare_repeatables(plan, maps)
+                self.assertEqual(records[0]['variants'], [{'resource': 'map', 'index': 0, 'native_once': False}])
+                patched = copy.deepcopy(maps['map']['root'])
+                patched['Actors'][0]['Dynamic']['Drop__DropActor'] = records[0]['actor']
+                raw_maps = {'map': byml_codec.dump({'root': patched, 'endian': '<', 'version': 7})}
+                self.assertEqual(patch_repeatable_sources(records, maps, raw_maps), [])
+                result = byml_codec.load(raw_maps['map'])['root']['Actors']
+                self.assertEqual(len(result), 1)
+                self.assertNotIn('Presence', result[0])
+                self.assertEqual(result[0]['Dynamic']['Drop__DropActor'], records[0]['actor'])
+                expected = copy.deepcopy(maps['map']['root']['Actors'][0])
+                expected['Dynamic']['Drop__DropActor'] = records[0]['actor']
+                self.assertEqual(result[0], expected)
+                self.assertEqual(plan['placements'][0]['reward_actor'], 'Obj_Rando_Item_BombBag_Small')
 
     def test_minor_rewards_use_the_short_get(self):
         from oot_rando.patching.repeatable_adapter import LARGE_GET_TYPE, MEDIUM_GET_TYPE, get_type
@@ -93,33 +68,30 @@ class RepeatableSourceTests(unittest.TestCase):
         presence = {'FlagName': 'IceCavern_Room07_RedRupeePot_IsCrushed', 'IsNegation': True, 'IsCheckLazy': True}
         plan, maps = self.fixtures(presence)
         records = prepare_repeatables(plan, maps)
+        self.assertTrue(records[0]['variants'][0]['native_once'])
         raw_maps = {}
-        patch_repeatable_sources(records, maps, raw_maps)
-        actors = byml_codec.load(raw_maps['map'])['root']['Actors']
-        self.assertEqual(len(actors), 1)
-        self.assertEqual(actors[0]['Presence'], presence)
+        self.assertEqual(patch_repeatable_sources(records, maps, raw_maps), [])
+        self.assertEqual(maps['map']['root']['Actors'][0]['Presence'], presence)
 
-    def test_saved_bool_and_sparse_fallback_key_have_distinct_allocation_costs(self):
+    def test_saved_bool_is_the_only_save_data_added(self):
         plan, maps = self.fixtures()
         records = prepare_repeatables(plan, maps)
-        original = records[0]['variants'][0]['original_hash']
-        records[0]['variants'].append(copy.deepcopy(records[0]['variants'][0]))
         schema = {'Data': {'Bool': [{'Hash': byml_codec.U32(123), 'DefaultValue': False,
                     'SaveFileIndex': 0, 'ResetTypeValue': 8}],
-                    'Bool64bitKey': [{'Hash': byml_codec.U64(original),
-                    'SaveFileIndex': 0, 'ResetTypeValue': 24}]},
+                    'Bool64bitKey': [{'Hash': byml_codec.U64(98765432123456789),
+                    'SaveFileIndex': 0, 'ResetTypeValue': 88}]},
                   'MetaData': {'SaveDataSize': [100], 'SaveDataOffsetPos': [80],
                                'AllDataSaveSize': 100, 'AllDataSaveOffset': 80}}
         raw = byml_codec.dump({'root': schema, 'endian': '<', 'version': 7})
         after, report = register_repeatable_flags(raw, records)
         result = byml_codec.load(after)['root']
-        self.assertEqual(result['MetaData']['SaveDataSize'], [116])
+        self.assertEqual(result['MetaData']['SaveDataSize'], [108])
         self.assertEqual(result['MetaData']['SaveDataOffsetPos'], [88])
         self.assertEqual(result['MetaData']['AllDataSaveOffset'], 88)
-        self.assertEqual(report['saved_bytes_added'], 16)
+        self.assertEqual(report['saved_bytes_added'], 8)
         self.assertEqual(len(result['Data']['Bool']), 2)
-        self.assertEqual(len(result['Data']['Bool64bitKey']), 2)
-        self.assertEqual(result['Data']['Bool64bitKey'][-1]['ResetTypeValue'], 24)
+        # The source's own broken-state key is the vanilla one, untouched.
+        self.assertEqual(result['Data']['Bool64bitKey'], schema['Data']['Bool64bitKey'])
         with self.assertRaisesRegex(ValueError, '(?i)collision'):
             register_repeatable_flags(after, records)
 
