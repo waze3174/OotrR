@@ -35,7 +35,9 @@ SEQUENCE, HEAD, HEARTBEAT, STATUS, STATUS_TEXT, SEED_ID, READ_HEAD, MODULE_VERSI
 HEADER = struct.Struct('<8sHHHHIIIB3x64s24sII')
 STATUS_NONE, STATUS_DISCONNECTED, STATUS_CONNECTING, STATUS_CONNECTED = range(4)
 # the console's kinds of message (console.h's console_kind_t); an entry stores kind + 1
-KIND_RECEIVED, KIND_SENT, KIND_HINT, KIND_CHAT, KIND_SERVER = range(5)
+KIND_RECEIVED, KIND_SENT, KIND_HINT, KIND_CHAT, KIND_SERVER, KIND_OTHERS = range(6)
+KIND_COUNT = 6
+OTHERS_MODULE_VERSION = 0x000600  # modules before it show KIND_OTHERS as server notices, so it isn't sent to them
 
 MODULE_SIGNATURE = b'OOTRTRK\0'   # the tracker module's crt0.S, at its start + 8
 PAGE = 0x1000
@@ -48,11 +50,12 @@ assert HEADER.size == HEADER_SIZE
 
 
 def classify(packet, slot):
-    """The console kind of a PrintJSON packet for player ``slot``, or None for one not shown.
+    """The console kind of a PrintJSON packet for player ``slot``.
 
     Items: received when they are for this slot (found here or elsewhere), sent when this slot found
-    them for another; other players' items are left out. Hints, chat (also the server's), and
-    everything else (joins, goals, releases, countdowns, command answers...) as server notices.
+    them for another, other players' items when neither (a player finding their own, or one sending to
+    a third). Hints, chat (also the server's), and everything else (joins, goals, releases, countdowns,
+    command answers...) as server notices.
     """
     kind = packet.get('type')
     if kind in ('ItemSend', 'ItemCheat'):
@@ -61,7 +64,7 @@ def classify(packet, slot):
             return KIND_RECEIVED
         if finder == slot:
             return KIND_SENT
-        return None
+        return KIND_OTHERS
     if kind == 'Hint':
         return KIND_HINT
     if kind in ('Chat', 'ServerChat'):
@@ -245,6 +248,8 @@ class ConsoleMailbox:
         if fields is None:
             return False
         with self._lock:
+            if fields['module_version'] < OTHERS_MODULE_VERSION:
+                self._lines = deque((line for line in self._lines if line[0] != KIND_OTHERS + 1), maxlen=QUEUE)
             free = max(0, CAPACITY - (fields['head'] - fields['read_head'])) if fields['head'] >= fields['read_head'] \
                 else CAPACITY
             lines = list(self._lines)[:free]

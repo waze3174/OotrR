@@ -1094,7 +1094,8 @@ static int test_console_defaults_and_values(void)
   CHECK(!strcmp(console_setting_name(CONSOLE_SETTING_SHOWN), "Console"));
   CHECK(!strcmp(console_setting_name(CONSOLE_SETTING_MESSAGES), "Messages"));
   CHECK(!strcmp(console_setting_name(CONSOLE_SETTING_COUNT), ""));
-  const char *kinds[CONSOLE_KIND_COUNT] = { "Items received", "Items sent", "Hints", "Chat", "Server notices" };
+  const char *kinds[CONSOLE_KIND_COUNT] = { "Items received", "Items sent", "Hints", "Chat", "Server notices",
+                                           "Other players' items" };
   for (int kind = 0; kind < CONSOLE_KIND_COUNT; kind++)
     CHECK(!strcmp(console_kind_name((console_kind_t)kind), kinds[kind]));
   return 0;
@@ -1135,7 +1136,7 @@ static int test_console_settings_cycle_and_each_kind_of_seed_has_its_own_switch(
   console_toggle_kind(&s, CONSOLE_CHAT);
   console_toggle_kind(&s, CONSOLE_HINT);
   CHECK(!console_kind_shown(&s, CONSOLE_CHAT) && !console_kind_shown(&s, CONSOLE_HINT));
-  CHECK(console_kind_shown(&s, CONSOLE_RECEIVED) && !strcmp(console_value_text(&s, CONSOLE_SETTING_MESSAGES, 0), "3 of 5"));
+  CHECK(console_kind_shown(&s, CONSOLE_RECEIVED) && !strcmp(console_value_text(&s, CONSOLE_SETTING_MESSAGES, 0), "4 of 6"));
   console_toggle_kind(&s, CONSOLE_CHAT);
   CHECK(console_kind_shown(&s, CONSOLE_CHAT));
   for (int kind = 0; kind < CONSOLE_KIND_COUNT; kind++)
@@ -1165,11 +1166,11 @@ static int test_console_file_text(void)
   size_t length = console_format(&defaults, text, sizeof(text));
   CHECK(length == strlen(text));
   CHECK(!strcmp(text, "version=1\non_local=0\non_archipelago=1\nposition=0\nopacity=75\nlines=6\nfade=10\n"
-                      "received=1\nsent=1\nhints=1\nchat=1\nserver=1\n"));
-  for (int combination = 0; combination < 4 * 4 * 4 * 4 * 32; combination += 7) {
+                      "received=1\nsent=1\nhints=1\nchat=1\nserver=1\nothers=1\n"));
+  for (int combination = 0; combination < 4 * 4 * 4 * 4 * 64; combination += 7) {
     console_settings_t s = { { combination & 1, combination >> 1 & 1 }, (uint8_t)(combination >> 2 & 3),
                              (uint8_t)(combination >> 4 & 3), (uint8_t)(combination >> 6 & 3),
-                             (uint8_t)(combination >> 8 & 3), (uint8_t)(combination >> 3 & 31) };
+                             (uint8_t)(combination >> 8 & 3), (uint8_t)(combination >> 3 & 63) };
     console_settings_t read = console_defaults();
     console_format(&s, text, sizeof(text));
     console_parse(&read, text, strlen(text));
@@ -1193,6 +1194,19 @@ static int test_console_file_without_its_version_or_damaged_leaves_the_defaults(
   CHECK(console_equal(s, defaults)); /* each bad value skipped */
   s = console_read("lines=4\nversion=1\n"); /* the version can come anywhere */
   CHECK(console_lines(&s) == 4);
+  return 0;
+}
+
+static int test_console_file_of_0_5_0_shows_other_players_items(void)
+{
+  /* 0.5.0's file has no "others" line: that kind keeps its default, and the kinds it has keep their bits */
+  console_settings_t s = console_read("version=1\non_local=0\non_archipelago=1\nposition=0\nopacity=75\nlines=6\n"
+                                      "fade=10\nreceived=1\nsent=0\nhints=1\nchat=0\nserver=1\n");
+  CHECK(console_kind_shown(&s, CONSOLE_OTHERS) && console_kind_shown(&s, CONSOLE_SERVER));
+  CHECK(!console_kind_shown(&s, CONSOLE_SENT) && !console_kind_shown(&s, CONSOLE_CHAT));
+  CHECK(!strcmp(console_value_text(&s, CONSOLE_SETTING_MESSAGES, true), "4 of 6"));
+  s = console_read("version=1\nothers=0\n");
+  CHECK(!console_kind_shown(&s, CONSOLE_OTHERS) && console_kind_shown(&s, CONSOLE_SERVER));
   return 0;
 }
 
@@ -1341,13 +1355,13 @@ static int test_mailbox_lines_are_taken_once_and_never_while_written(void)
   CHECK(log.lines[1].kind == CONSOLE_SENT && log.lines[2].kind == CONSOLE_CHAT);
   CHECK(client.status == MAILBOX_STATUS_CONNECTED && !strcmp(client.status_text, "archipelago.gg:38281 as Link"));
   CHECK(!mailbox_poll(&box, &client, &log, 40) && log.count == 3); /* the same sequence: nothing new */
-  const char *more[2] = { "a hint", "a server notice" };
-  const uint8_t other_kinds[2] = { 3, 9 }; /* 9: a kind of a later client, shown as a server notice */
-  client_writes(&box, more, other_kinds, 2, MAILBOX_STATUS_CONNECTED, "archipelago.gg:38281 as Link");
-  CHECK(mailbox_poll(&box, &client, &log, 50) && log.count == 5);
-  CHECK(log.lines[3].kind == CONSOLE_HINT && log.lines[4].kind == CONSOLE_SERVER);
+  const char *more[3] = { "a hint", "Saria found her Fairy Bow", "a server notice" };
+  const uint8_t other_kinds[3] = { 3, 6, 9 }; /* 9: a kind of a later client, shown as a server notice */
+  client_writes(&box, more, other_kinds, 3, MAILBOX_STATUS_CONNECTED, "archipelago.gg:38281 as Link");
+  CHECK(mailbox_poll(&box, &client, &log, 50) && log.count == 6);
+  CHECK(log.lines[3].kind == CONSOLE_HINT && log.lines[4].kind == CONSOLE_OTHERS && log.lines[5].kind == CONSOLE_SERVER);
   client_writes(&box, more, other_kinds, 0, MAILBOX_STATUS_DISCONNECTED, "");
-  CHECK(mailbox_poll(&box, &client, &log, 60) && log.count == 5 && client.status == MAILBOX_STATUS_DISCONNECTED);
+  CHECK(mailbox_poll(&box, &client, &log, 60) && log.count == 6 && client.status == MAILBOX_STATUS_DISCONNECTED);
   return 0;
 }
 
@@ -1781,6 +1795,7 @@ static const test_t tests[] = {
   { "console_file_text", test_console_file_text, 0 },
   { "console_file_without_its_version_or_damaged_leaves_the_defaults",
     test_console_file_without_its_version_or_damaged_leaves_the_defaults, 0 },
+  { "console_file_of_0_5_0_shows_other_players_items", test_console_file_of_0_5_0_shows_other_players_items, 0 },
   { "console_text_is_what_the_font_draws", test_console_text_is_what_the_font_draws, 0 },
   { "console_view_has_the_newest_lines_of_the_kinds_shown", test_console_view_has_the_newest_lines_of_the_kinds_shown, 0 },
   { "console_lines_fade_after_their_time", test_console_lines_fade_after_their_time, 0 },

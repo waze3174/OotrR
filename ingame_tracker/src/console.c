@@ -20,7 +20,7 @@ static const char *const position_texts[CONSOLE_POSITION_COUNT] = {
 };
 static const char *const kind_names[CONSOLE_KIND_COUNT] = {
   [CONSOLE_RECEIVED] = "Items received", [CONSOLE_SENT] = "Items sent", [CONSOLE_HINT] = "Hints",
-  [CONSOLE_CHAT] = "Chat", [CONSOLE_SERVER] = "Server notices",
+  [CONSOLE_CHAT] = "Chat", [CONSOLE_SERVER] = "Server notices", [CONSOLE_OTHERS] = "Other players' items",
 };
 static const uint8_t opacity_percents[CONSOLE_STEPS] = { 25, 50, 75, 100 };
 static const char *const opacity_texts[CONSOLE_STEPS] = { "25 %", "50 %", "75 %", "100 %" };
@@ -28,8 +28,10 @@ static const uint8_t line_counts[CONSOLE_STEPS] = { 4, 6, 8, CONSOLE_MAX_LINES }
 static const char *const line_texts[CONSOLE_STEPS] = { "4", "6", "8", "12" };
 static const uint8_t fade_seconds[CONSOLE_STEPS] = { 5, 10, 30, 0 }; /* 0: permanent */
 static const char *const fade_texts[CONSOLE_STEPS] = { "5 s", "10 s", "30 s", "Permanent" };
-static const char *const kinds_texts[CONSOLE_KIND_COUNT + 1] = { "None", "1 of 5", "2 of 5", "3 of 5", "4 of 5", "All" };
-_Static_assert(CONSOLE_KIND_COUNT == 5, "kinds_texts counts out of five");
+static const char *const kinds_texts[CONSOLE_KIND_COUNT + 1] = {
+  "None", "1 of 6", "2 of 6", "3 of 6", "4 of 6", "5 of 6", "All",
+};
+_Static_assert(CONSOLE_KIND_COUNT == 6, "kinds_texts counts out of six");
 
 /* the file's names: its version, the settings, then a line per kind */
 enum {
@@ -38,7 +40,7 @@ enum {
 };
 static const char *const file_names[FILE_NAME_COUNT] = {
   "version", "on_local", "on_archipelago", "position", "opacity", "lines", "fade",
-  "received", "sent", "hints", "chat", "server",
+  "received", "sent", "hints", "chat", "server", "others",
 };
 
 console_settings_t console_defaults(void)

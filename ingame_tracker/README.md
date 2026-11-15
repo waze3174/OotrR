@@ -19,10 +19,10 @@ save has found:
 - each region's checks by name, ticked when collected, so you can see what's still missing there;
 - the seed's id, a warning when the save isn't from this seed, and "Goal reached";
 - a **postcard**: a small card with only the icons (items, songs, temples, dungeon keys) in a corner of the screen while you play;
-- a **console** for Archipelago seeds: the items you receive and send, hints, chat and the server's notices, as a few lines over
-  the game, written there by OotrR's Archipelago client.
+- a **console** for Archipelago seeds: the items you receive and send, other players' items, hints, chat and the server's
+  notices, as a few lines over the game, written there by OotrR's Archipelago client.
 
-Version 0.5.0. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
+Version 0.6.0. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Controls
 
@@ -76,12 +76,13 @@ means the defaults. If the SD card can't be mounted, the settings last until the
 | Opacity | 25 %, 50 %, 75 %, 100 % | 75 % |
 | Lines | 4, 6, 8, 12 | 6 |
 | Fade | 5 s, 10 s, 30 s, Permanent | 10 s |
-| Messages | A opens a page of the kinds of message, each ticked or not: Items received, Items sent, Hints, Chat, Server notices | all ticked |
+| Messages | A opens a page of the kinds of message, each ticked or not: Items received, Items sent, Hints, Chat, Server notices, Other players' items | all ticked |
 
 The console shows the newest lines of the kinds ticked, oldest at the top, each in its kind's colour (gold received, green sent, blue
-hints, white chat, grey notices); a long line wraps over up to three rows. A line fades out after the Fade time; Permanent keeps the
-last lines. It is drawn whether the panel is open or not, takes no input, and keeps clear of the postcard: next to it, narrower, or
-above or below it. While the console's pages are shown it is drawn whole as a preview ("No messages yet" before the first line).
+hints, white chat, grey notices, lavender other players' items: one player finding their own item, or sending one to a third); a
+long line wraps over up to three rows. A line fades out after the Fade time; Permanent keeps the last lines. It is drawn whether
+the panel is open or not, takes no input, and keeps clear of the postcard: next to it, narrower, or above or below it. While the
+console's pages are shown it is drawn whole as a preview ("No messages yet" before the first line).
 Console is kept apart for local and Archipelago seeds, so turning it on for one leaves the other's default.
 
 Its lines come from OotrR's Archipelago client (the desktop application or `ap-client`), which finds the console's mailbox in
