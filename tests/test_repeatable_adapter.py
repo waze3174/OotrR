@@ -327,6 +327,50 @@ class LocalGraphTests(unittest.TestCase):
                 self.assertEqual(pouch['PouchActor'], f'Work/Actor/{record["canonical"]}.engine__actor__ActorParam.gyml')
                 for rows in tables.values():
                     self.assertEqual(sum(1 for row in rows if row['__RowId'] == actor), 1)
+                # Its own drop AI: deleted on spawn once the check is collected.
+                info = byml_codec.load(files[components['AIInfoRef'][1:]])['root']
+                self.assertEqual(info['RootAIRef'], f'Work/AI/Root/{actor}.root.ain')
+                self.assertIn(f'AI/{actor}.root.ainb', files)
+
+    def test_respawned_drop_deletes_itself_once_collected(self):
+        import ainb
+        from oot_rando.formats.inspect_nup import Nup
+        from oot_rando.formats.inspect_resources import dictionaries
+        from oot_rando.game.world_maps import effective_members
+        from oot_rando.patching.repeatable_adapter import (DROP_AI_MEMBER, EVENT_MEMBER, EVENT_PACK,
+                                                           instrument_drop_ai)
+        nup = Nup(os.environ['OOT_NUP'])
+        try:
+            dic, members = dictionaries(nup), effective_members(nup)
+            pack = sarc(decompress(nup.read(members[EVENT_PACK]), dic))
+        finally:
+            nup.stream.close()
+        raw = pack[DROP_AI_MEMBER]
+        before = ainb.AINB.from_binary(raw).as_dict()
+        after = ainb.AINB.from_binary(instrument_drop_ai(raw, 'Rando.Check.test', 'Obj_RandoOnce_test.root',
+                                                         pack[EVENT_MEMBER])).as_dict()
+        self.assertEqual(before['Commands'], after['Commands'])
+        self.assertEqual(after['Filename'], 'Obj_RandoOnce_test.root')
+        # Every native node is kept as it was, but for the start-up sequence's first step.
+        count = len(before['Nodes'])
+        query, delete, keep, selector = after['Nodes'][count:]
+        changed = [i for i in range(count) if before['Nodes'][i] != after['Nodes'][i]]
+        self.assertEqual(len(changed), 1)
+        start = after['Nodes'][changed[0]]
+        self.assertEqual(start['Node Type'], 'Element_Sequential')
+        self.assertEqual(start['Plugs']['Child'][0]['Node Index'], selector['Node Index'])
+        self.assertEqual(start['Plugs']['Child'][1:], before['Nodes'][changed[0]]['Plugs']['Child'])
+        root = after['Nodes'][after['Commands'][0]['Root Node Index']]
+        self.assertIn(start['Node Index'], [p['Node Index'] for p in root['Plugs']['Child']])
+        self.assertEqual(query['Name'], 'QueryGetNonStructGameDataBool')
+        self.assertEqual(query['Parameters']['Inputs']['String'][0]['Default Value'], 'Rando.Check.test')
+        self.assertIs({p['Name']: p['Default Value'] for p in query['Properties']['Bool']}['OutputOnlyOnEnter'], True)
+        self.assertEqual(selector['Queries'], [query['Node Index']])
+        branches = {p['Name']: p['Node Index'] for p in selector['Plugs']['Child']}
+        self.assertEqual(branches, {'True': delete['Node Index'], 'False': keep['Node Index']})
+        self.assertEqual(delete['Name'], 'OneShotGenericDeleteThisActor')
+        self.assertIs({p['Name']: p['Default Value'] for p in delete['Properties']['Bool']}['IsFade'], False)
+        self.assertEqual(keep['Name'], 'OneshotDoNothing')
 
 
 if __name__ == '__main__':

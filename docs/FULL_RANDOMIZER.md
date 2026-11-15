@@ -116,6 +116,10 @@ on the token. The token's AI keeps it standing where it spawns
 (`ExecuteKeepStandingPosture`), so an item shaken from a tree or out of a pot thrown at
 a wall hung in the air. Native drops share `Obj_Item_Base`'s `DropItem` AI
 (`ExecuteDropBound`: fall, bounce, land), physics, blackboard and death.
+Each such pickup runs its own clone of that AI: when it spawns, it reads its check flag
+and deletes itself once the check is collected, so a source that respawns while the
+area stays loaded (a pot or rock when Link looks away) gives the item only once. The
+vanilla copy of the source takes over on the next area load.
 
 ## Dungeon-specific keys (`key_adapter.py`)
 

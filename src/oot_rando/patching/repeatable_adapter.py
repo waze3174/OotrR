@@ -5,6 +5,11 @@ sets a saved check flag only after the native add-to-pouch action. Complementary
 Presence conditions select the randomized source before that flag and a clone
 of the untouched vanilla source afterwards. Gameplay validation remains required.
 
+A source respawns while the area stays loaded (a pot or rock when Link looks
+away) and drops its pickup again before the vanilla copy can take over: each
+pickup's own AI (a clone of the native ``DropItem`` one) checks the flag when it
+spawns and deletes itself once the check is collected.
+
 Shop shelves holding a shuffled item (``Shop_Rando_*``) are bought once the same
 way: each gets its own actor whose shop AI writes the check flag when the item is
 bought, and reads that flag as its "sold out" state: the item at rest then
@@ -20,12 +25,14 @@ import uuid
 from oot_rando.formats import byml_codec
 from oot_rando.formats.inspect_resources import sarc
 from oot_rando.game.item_forms import (WORLD_CANONICAL, DROP_PREFIX, SHOP_PREFIX, build_pack, canonical_of,
-                        is_derived, add_rsdb_rows)
+                        is_derived, add_rsdb_rows, resolve_components)
 from oot_rando.patching.soul_adapter import FLAG_PREFIX as SOUL_FLAG_PREFIX, murmur3
 
 REPEATABLE = frozenset(('pots', 'bushes', 'rocks', 'crates', 'beehives', 'trees'))
 EVENT_PACK = 'Pack/AI.Global.Product.111.pack.zs'
 EVENT_MEMBER = 'AI/PouchContent.event.root.ainb'
+DROP_AI_MEMBER = 'AI/DropItem.root.ainb'
+DROP_AI_INFO = '?AI/AIInfo/DropItem.engine__actor__AIInfo.bgyml'
 LARGE_GET_TYPE = 1746592023
 # Short get (the game's own for gold tokens, heart pieces and the gold rupee on the
 # ground): the get event still runs, so the check flag is written, without the
@@ -318,6 +325,83 @@ def instrument_shop_ai(raw, flag, filename):
     return binary
 
 
+def instrument_drop_ai(raw, flag, filename, event_raw):
+    """Clone the native drop AI so that a pickup spawned after its check deletes itself.
+
+    The start-up sequence of the root (one frame of nothing, then the rotation AS)
+    first asks the saved ``flag``: set, the pickup deletes itself, before it can be
+    touched; not set, nothing changes. The query only outputs on entering, and that
+    sequence runs once, at spawn: the first pickup is never deleted while its own
+    get event writes the flag. The query and deletion are copies of the native nodes
+    of the get event graph ``event_raw``.
+    """
+    try:
+        import ainb
+    except ImportError as error:
+        raise ValueError('Install ainb==0.2.17 for first-collection rewards.') from error
+    script = ainb.AINB.from_binary(raw)
+    original = script.as_dict()
+
+    def build(document):
+        # As for the shop AI, the blackboard must be restored after as_dict().
+        result = ainb.AINB.from_dict(document)
+        result.blackboard = script.blackboard
+        return result.to_binary()
+    if build(original) != script.to_binary():
+        raise ValueError('The drop AI cannot be rewritten faithfully.')
+    document = copy.deepcopy(original)
+    if document['Version'] != 0x408:
+        raise ValueError('Unexpected AINB version for the drop AI.')
+    nodes = document['Nodes']
+    roots = [c['Root Node Index'] for c in document['Commands'] if c['Name'] == 'Root']
+    if len(roots) != 1 or nodes[roots[0]]['Node Type'] != 'Element_Simultaneous':
+        raise ValueError('Drop AI: root not recognised.')
+    starts = [nodes[p['Node Index']] for p in nodes[roots[0]]['Plugs']['Child']
+              if nodes[p['Node Index']]['Node Type'] == 'Element_Sequential']
+    if len(starts) != 1 or any(prop['Name'] == 'IsLoop' and prop['Default Value']
+                               for prop in starts[0]['Properties'].get('Bool', [])):
+        raise ValueError('Drop AI: start-up sequence ambiguous or missing.')
+    templates = ainb.AINB.from_binary(event_raw).as_dict()['Nodes']
+
+    def native(source, name):
+        found = [n for n in source if n['Name'] == name]
+        if len(found) != 1:
+            raise ValueError(f'Drop AI: {name} ambiguous or missing.')
+        return copy.deepcopy(found[0])
+    query_index, delete_index, noop_index, selector_index = range(len(nodes), len(nodes) + 4)
+    query = native(templates, 'QueryGetNonStructGameDataBool')
+    query.update({'Node Index': query_index, 'GUID': _guid(flag + '/drop-collected'), 'Queries': [], 'Plugs': {}})
+    query['Parameters']['Inputs']['String'] = [_default('GameDataFullName', flag)]
+    for prop in query['Properties']['Bool']:
+        if prop['Name'] == 'OutputOnlyOnEnter':
+            prop['Default Value'] = True
+    delete = native(templates, 'OneShotGenericDeleteThisActor')
+    delete.update({'Node Index': delete_index, 'GUID': _guid(flag + '/drop-delete')})
+    for prop in delete['Properties']['Bool']:
+        if prop['Name'] == 'IsFade':
+            prop['Default Value'] = False
+    noop = copy.deepcopy(next(n for n in nodes if n['Name'] == 'OneshotDoNothing'))
+    noop.update({'Node Index': noop_index, 'GUID': _guid(flag + '/drop-keep')})
+    selector = copy.deepcopy(next(n for n in nodes if n['Node Type'] == 'Element_BoolSelector'))
+    selector.update({'Node Index': selector_index, 'GUID': _guid(flag + '/drop-once'), 'Queries': [query_index],
+                     'Attachments': [], 'Flags': [], 'XLink Actions': []})
+    selector['Parameters'] = {'Inputs': {'Bool': [{'Name': 'Input', 'Default Value': False, 'Node Index': query_index,
+                                                   'Output Index': 0, 'Flags': []}]}, 'Outputs': {}}
+    selector['Plugs'] = {'Generic': [{'Node Index': query_index, 'Name': 'Input', 'Unknown 1': 0, 'Unknown 2': 0}],
+                         'Child': [{'Node Index': delete_index, 'Name': 'True'},
+                                   {'Node Index': noop_index, 'Name': 'False'}]}
+    starts[0]['Plugs']['Child'].insert(0, {'Node Index': selector_index, 'Name': ''})
+    nodes.extend([query, delete, noop, selector])
+    document['Filename'] = filename
+    binary = build(document)
+    result = ainb.AINB.from_binary(binary).as_dict()
+    if result != document:
+        raise ValueError('The modified drop AI does not read back identically.')
+    if result['Commands'] != original['Commands']:
+        raise ValueError('Drop AI commands changed unexpectedly.')
+    return binary
+
+
 def prepare_repeatables(plan, maps):
     """Rename selected repeatable world rewards; return generation descriptors.
 
@@ -405,7 +489,8 @@ def build_repeatable_packs(records, read_pack, read_raw, tables):
             _alias_rows(tables, standard, record['actor'])
             continue
         if event is None:
-            event = sarc(read_raw(EVENT_PACK))[EVENT_MEMBER]
+            global_ai = sarc(read_raw(EVENT_PACK))
+            event, drop_ai = global_ai[EVENT_MEMBER], global_ai[DROP_AI_MEMBER]
         # Dropped by its source: a falling pickup, not the standing token.
         standard = DROP_PREFIX + record['canonical']
         raw, template = build_pack(standard, read_pack, byml_codec)
@@ -430,6 +515,16 @@ def build_repeatable_packs(records, read_pack, read_raw, tables):
         components['EventPerformerRef'] = '?' + event_param
         also = (SOUL_FLAG_PREFIX + record['canonical'],) if record['canonical'].startswith('Item_Soul_') else ()
         files[event_member] = instrument_pickup_event(event, record['flag'], event_name, record['canonical'], also)
+        # A respawned source drops nothing more once the check is collected.
+        behaviour = resolve_components({**files, old_path: byml_codec.dump(document)}, standard, byml_codec)
+        if behaviour.get('AIInfoRef') != DROP_AI_INFO:
+            raise ValueError('First-collection pickup without the native drop AI: ' + record['actor'])
+        root = record['actor'] + '.root'
+        ai_info = f'AI/AIInfo/{record["actor"]}.engine__actor__AIInfo.bgyml'
+        files['AI/' + root + '.ainb'] = instrument_drop_ai(drop_ai, record['flag'], root, event)
+        files[ai_info] = byml_codec.dump({'endian': '<', 'version': 7,
+                                          'root': {'RootAIRef': 'Work/AI/Root/' + root + '.ain'}})
+        components['AIInfoRef'] = '?' + ai_info
         files[f'Actor/{record["actor"]}.engine__actor__ActorParam.bgyml'] = byml_codec.dump(document)
         new['Pack/Actor/' + record['actor'] + '.pack.zs'] = (byml_codec.build_sarc(files), template)
         _alias_rows(tables, standard, record['actor'])
