@@ -462,6 +462,21 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             # through its cutscene whatever it contains.
             extra_raw[SWORD_CHEST_FLOW], sword_chest = skip_kokiri_sword_cutscene(
                 extra_raw.get(SWORD_CHEST_FLOW) or decompress(read(SWORD_CHEST_FLOW), d))
+            # Story locks broken by items found in any order (patching/story_fixes.py).
+            from oot_rando.patching import story_fixes
+            story = {}
+            for path, key, fix in story_fixes.FLOW_FIXES:
+                extra_raw[path], story[key] = fix(extra_raw.get(path) or decompress(read(path), d))
+            temple = raw_maps.get(story_fixes.TEMPLE_MAP) or decompress(read(story_fixes.TEMPLE_MAP), d)
+            sheik_edits = story_fixes.sheik_presence_edits(Byml(temple).root)
+            raw_maps[story_fixes.TEMPLE_MAP] = patch_strings(temple, sheik_edits)
+            story['sheik'] = {'map': story_fixes.TEMPLE_MAP, 'actor': sheik_edits[0]['path'][1],
+                              'presence': story_fixes.SHEIK_PRESENCE}
+            # Zelda's escape on the three stones, checked at every item get.
+            extra_raw[ACTION_GUIDE_FLOW], story['zelda_escape_item_get'] = story_fixes.zelda_escape_on_item_get(
+                extra_raw[ACTION_GUIDE_FLOW])
+            # The clock runs before Zelda (Impa's send-off flag set at the start).
+            story['clock'] = story_fixes.CLOCK_FLAG
         gamedata_source = extra_raw.get(GAMEDATA)
         if gamedata_source is None:
             gamedata_source = decompress(read(GAMEDATA), d)
@@ -489,7 +504,7 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             # Maps/compasses "start with", keys "removed": dungeon data written at the start.
             from oot_rando.patching.event_patch import add_start_values
             from oot_rando.patching.key_adapter import start_dungeon_values, check_start_values
-            start_values = start_dungeon_values(settings.full)
+            start_values = dict(start_dungeon_values(settings.full), **story_fixes.story_start_values())
             if start_values:
                 check_start_values(extra_raw[GAMEDATA], start_values)
                 extra_raw[opening] = add_start_values(extra_raw[opening], 'RandoCollected_Event3', start_values)
@@ -511,6 +526,7 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             if full['progressive']['actors']:
                 skips['progressive'] = {'converter': progressive_converter, 'hooks': full['progressive']['hooks']}
             skips['sword_chest'] = sword_chest
+            skips['story_fixes'] = story
             if full.get('gift_get'):
                 skips['gift_get'] = full['gift_get']
             if full.get('song_flows'):

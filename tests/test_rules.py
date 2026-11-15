@@ -51,6 +51,21 @@ class LogicTests(unittest.TestCase):
         self.assertIs(dict(strict.location_rules)['Kak Anju as Adult'][0][1](Night, {}, 'adult'),
                       dict(self.logic.location_rules)['Kak Anju as Adult'][0][1](Night, {}, 'adult'))
 
+    def test_song_of_time_and_door_wait_for_zelda_and_stones(self):
+        # Zelda's escape and the Door of Time (DoorOfTime) follow Zelda and the
+        # three stones (the game checks the stones held: patching/story_fixes.py).
+        for location in ('Song from Ocarina of Time', 'Master Sword Pedestal'):
+            rule = self.data.remake['location_rules'][location]
+            self.assertIn("'Met Zelda'", rule, location)
+            self.assertIn('has_all_stones', rule, location)
+            self.assertNotIn('Clear', rule, location)
+        self.assertNotIn('Master Sword Pedestal', self.reachable(
+            {'Master Sword Pedestal': None}, {'Ocarina': 1, 'Song of Time': 1}))
+
+    def test_remake_events_compiled(self):
+        events = {e for r in self.logic.regions.values() for e, _ in r['events']}
+        self.assertIn('Met Zelda', events)
+
     def test_saria_gift_waits_for_deku_tree(self):
         self.assertNotIn('LW Gift from Saria', self.reachable({'LW Gift from Saria': None}))
         self.assertIn('LW Gift from Saria', self.reachable({'LW Gift from Saria': None}, {'Deku Tree Clear': 1}))

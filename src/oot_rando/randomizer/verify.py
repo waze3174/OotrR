@@ -259,10 +259,19 @@ def verify(nup_path, seed_dir):
                     raise ValueError('Progressive tokens differ from the spoiler.')
                 original = add_converter(original, all_tokens)[0]
                 report['progressive_tokens'] = len(all_tokens)
+            if path == ACTION_GUIDE_FLOW and 'zelda_escape_item_get' in (skips.get('story_fixes') or {}):
+                from oot_rando.patching.story_fixes import zelda_escape_on_item_get
+                original = zelda_escape_on_item_get(original)[0]
+                report['story_fixes'] = report.get('story_fixes', 0) + 1
             from oot_rando.patching.qol_patches import SWORD_CHEST_FLOW, skip_kokiri_sword_cutscene
             if path == SWORD_CHEST_FLOW and skips.get('sword_chest'):
                 original = skip_kokiri_sword_cutscene(original)[0]
                 report['comfort_flows'] = report.get('comfort_flows', 0) + 1
+            from oot_rando.patching import story_fixes
+            for fixed_path, key, fix in story_fixes.FLOW_FIXES:
+                if path == fixed_path and key in (skips.get('story_fixes') or {}):
+                    original = fix(original)[0]
+                    report['story_fixes'] = report.get('story_fixes', 0) + 1
             gifts = skips.get('gift_get', {})
             if path in gifts:
                 # Cutscene whose own add is bypassed: never reached any more.
@@ -346,6 +355,9 @@ def verify(nup_path, seed_dir):
                 from oot_rando.patching.event_patch import start_value_events
                 from oot_rando.patching.key_adapter import start_dungeon_values
                 values = start_dungeon_values((manifest.get('settings') or {}).get('full') or {})
+                if 'clock' in (manifest.get('skips', {}).get('story_fixes') or {}):
+                    from oot_rando.patching.story_fixes import story_start_values
+                    values = dict(values, **story_start_values())
                 for (key, value), name in zip(sorted(values.items()), start_value_events(values)):
                     before[name] = {'GameDataName': key, 'Value': value, 'Index': -1}
                     report['start_values'] = report.get('start_values', 0) + 1
@@ -419,6 +431,14 @@ def verify(nup_path, seed_dir):
                 else:
                     a2.setdefault('Dynamic', {})[field] = actor
                 report['rewards'] += 1
+            sheik_fix = (manifest.get('skips', {}).get('story_fixes') or {}).get('sheik')
+            if sheik_fix and path == sheik_fix['map'] and index == sheik_fix['actor'] and 'Presence' not in a2:
+                # Temple of Time Sheik only after the Forest Temple (patching/story_fixes.py).
+                from oot_rando.patching.story_fixes import SHEIK, SHEIK_PRESENCE_ENTRY
+                if a2.get('Gyaml') != SHEIK or sheik_fix['presence'] != SHEIK_PRESENCE_ENTRY['FlagName']:
+                    raise ValueError('Unexpected Sheik presence: ' + path)
+                a2['Presence'] = dict(SHEIK_PRESENCE_ENTRY)
+                report['story_fixes'] = report.get('story_fixes', 0) + 1
             if 'Presence' in b2 and 'Presence' not in a2:
                 flag = b2['Presence'].get('FlagName', '')
                 if not flag.startswith(FLAG_PREFIX + 'Item_Soul_') or b2['Presence'] != {

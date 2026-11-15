@@ -20,6 +20,22 @@
   "Song from Saria": {
    "rule": "is_child and Zeldas_Letter and at('GC Darunias Chamber', is_child)",
    "why": "Saria teaches her song during the Fire Stone quest (Challenge Get_StoneOfFire, step SariaMelodyGet), only after Darunia asked for music in his chamber (11/11: Kokiri Sword behind the Skull Kid)."
+  },
+  "Song from Ocarina of Time": {
+   "rule": "is_child and has_all_stones and 'Met Zelda'",
+   "why": "Zelda's escape (Challenge DoorOfTime) needs Goto_HyruleCastle and Impa's send-off first. The game now starts it on the three stones held (patching/story_fixes.py), not only at the end of Dodongo's Cavern and Jabu-Jabu's Belly (15/11, Discord report)."
+  },
+  "Master Sword Pedestal": {
+   "rule": "has_all_stones and 'Met Zelda'",
+   "why": "The Door of Time opens in the same DoorOfTime challenge, after Zelda's escape: the Song of Time alone (songs shuffled) does not open it."
+  }
+ },
+ "events": {
+  "HC Garden Locations": {
+   "Met Zelda": {
+    "rule": "is_child",
+    "why": "Zelda in the castle garden completes Goto_HyruleCastle, which starts DoorOfTime; Impa's send-off follows."
+   }
   }
  },
  "location_regions": {
