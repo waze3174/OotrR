@@ -1,6 +1,6 @@
 /* Browsing the panel: a highlight moves over the regions (shown in columns, filled top to bottom) and the Settings
  * entry after them. A opens the highlighted region's checks as a list that scrolls, or the Settings page, whose two
- * entries open the postcard's settings and the console's (and from these, its Messages page); B goes back a page.
+ * entries open the postcard's settings and the console's; B goes back a page.
  * Pure: app.c hands it the commands and the counts. */
 #ifndef BROWSE_H
 #define BROWSE_H
@@ -18,8 +18,7 @@ typedef enum {
   BROWSE_REGIONS, BROWSE_CHECKS,
   BROWSE_SETTINGS, /* the Settings page: the postcard and the console */
   BROWSE_POSTCARD, /* the postcard's settings */
-  BROWSE_CONSOLE,  /* the console's settings */
-  BROWSE_MESSAGES, /* the console's kinds of message */
+  BROWSE_CONSOLE,  /* the console's settings and its kinds of message */
 } browse_view_t;
 typedef enum { NAV_UP, NAV_DOWN, NAV_LEFT, NAV_RIGHT } nav_t;
 /* the Settings page's entries, in order */
@@ -32,7 +31,6 @@ typedef struct {
   uint32_t top;     /* and the first one shown */
   uint32_t entry;   /* on the Settings page: the highlighted entry (settings_entry_t) */
   uint32_t setting; /* in the postcard's or the console's settings: the highlighted one */
-  uint32_t message; /* on the Messages page: the highlighted kind (console_kind_t) */
 } browse_t;
 
 /* How many rows the columns have: the regions and the Settings entry after them. */
@@ -47,8 +45,8 @@ void browse_show_regions(browse_t *browse, uint32_t region_count);
  * down step through its rows (left and right change a value: app.c's). `check_count`: the highlighted region's
  * checks. */
 void browse_move(browse_t *browse, nav_t nav, uint32_t region_count, uint32_t check_count);
-/* A: the highlighted region's list from its top, the Settings page, the highlighted page of it, or the console's
- * Messages page from its Messages row. Elsewhere it does nothing here. */
+/* A: the highlighted region's list from its top, the Settings page, or the highlighted page of it. Elsewhere it
+ * does nothing here (on a kind's row of the console's page app.c ticks it). */
 void browse_open(browse_t *browse, uint32_t region_count);
 /* B: back a page (a list and the Settings page go back to the regions); false if the regions were shown already
  * (B then closes the panel). */

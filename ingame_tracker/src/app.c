@@ -206,21 +206,13 @@ static void change_postcard_setting(int direction)
 
 static void change_console_setting(int direction)
 {
-  if (app.browse.setting == CONSOLE_SETTING_MESSAGES)
-    return;
   console_step(&app.console, (console_setting_t)app.browse.setting, direction, app.archipelago);
   app.console_changed = app.console_dirty = true;
 }
 
-static void toggle_console_kind(void)
+static bool on_console_page(void)
 {
-  console_toggle_kind(&app.console, (console_kind_t)app.browse.message);
-  app.console_changed = app.console_dirty = true;
-}
-
-static bool on_console_pages(void)
-{
-  return app.open && (app.browse.view == BROWSE_CONSOLE || app.browse.view == BROWSE_MESSAGES);
+  return app.open && app.browse.view == BROWSE_CONSOLE;
 }
 
 /* The settings are written when their page is left (or the panel closed), not at each change. */
@@ -230,7 +222,7 @@ static void save_settings_changes(void)
     app.postcard_changed = false;
     postcardfile_save(&app.postcard);
   }
-  if (app.console_changed && !on_console_pages()) {
+  if (app.console_changed && !on_console_page()) {
     app.console_changed = false;
     consolefile_save(&app.console);
   }
@@ -250,8 +242,9 @@ static void navigate(control_t command)
     return;
   bool sideways = command == CONTROL_LEFT || command == CONTROL_RIGHT;
   int direction = command == CONTROL_RIGHT ? 1 : -1;
-  if (app.browse.view == BROWSE_MESSAGES && (command == CONTROL_SELECT || sideways))
-    toggle_console_kind();
+  bool kind_row = app.browse.view == BROWSE_CONSOLE && console_setting_is_kind((console_setting_t)app.browse.setting);
+  if (kind_row && (command == CONTROL_SELECT || sideways))
+    change_console_setting(direction);
   else if (command == CONTROL_SELECT)
     browse_open(&app.browse, app.seed.region_count);
   else if (app.browse.view == BROWSE_POSTCARD && sideways)

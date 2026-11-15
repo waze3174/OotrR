@@ -98,9 +98,9 @@ shorter last column). In a list, up and down step one check and left and right a
 B goes back to the regions, and B there closes the panel. Opening the panel shows the regions again, with the highlight where it was.
 
 After the regions comes the **Settings** entry (the region count). A opens `BROWSE_SETTINGS`, whose two rows (`browse_t.entry`) open
-`BROWSE_POSTCARD` and `BROWSE_CONSOLE` (`browse_t.setting`); the console's last row, Messages, opens `BROWSE_MESSAGES`
-(`browse_t.message`). B goes back one page: Messages to Console, Postcard and Console to Settings, Settings to the regions. Each page's
-highlight starts at its first row when it is opened, and is kept when a page below it is left.
+`BROWSE_POSTCARD` and `BROWSE_CONSOLE` (`browse_t.setting`); the console's rows after Fade are its kinds of message
+(`CONSOLE_SETTING_FIRST_KIND` on), which A or left and right tick. B goes back one page: Postcard and Console to Settings, Settings
+to the regions. Each page's highlight starts at its first row when it is opened, and is kept when a page below it is left.
 
 ## Drawing
 
@@ -206,7 +206,7 @@ are in [the format document](../../docs/ingame-tracker-format.md#the-consoles-ma
 - `console.c` is pure: the settings (on for local and for Archipelago seeds kept apart, position, opacity, lines, fade, the kinds as
   bits), their text, stepping, and `console.cfg`'s text (`version=1` first, then `name=number` lines; a file without `version=1` is
   ignored whole, a bad line or value is skipped). `cfgtext.c` is the `name=number` reader and writer it shares with `postcard.c`;
-  `consolefile.c` reads and writes the file through `sdfile.c`, as the postcard's (on loading the seed; when the console's pages are left
+  `consolefile.c` reads and writes the file through `sdfile.c`, as the postcard's (on loading the seed; when the console's page is left
   or the panel is closed).
 - `app.c` publishes a `console_view_t` (settings, on or off for this seed, status line, the lines to show) to the present thread
   through its own seqlock (`overlay_publish_console`) when a line, the status line or a setting changes. The status line comes from
@@ -216,7 +216,7 @@ are in [the format document](../../docs/ingame-tracker-format.md#the-consoles-ma
   line) and keeps it clear of the postcard's box: sideways, then narrower (down to 260), then above or below it; a tall one up or down,
   then beside it. The rows are collected from the bottom (the status line, then the newest lines, each wrapped over at most 3 rows) until
   the box is full; each row has its own band, so a short console doesn't darken an empty box. The opacity and each line's fade multiply
-  through `gpuui_set_opacity`. While the panel is open it is drawn only as the preview on the console's pages (whole, at full fade).
+  through `gpuui_set_opacity`. While the panel is open it is drawn only as the preview on the console's page (whole, at full fade).
   With the console's 12 rows and the postcard the frame stays under `MAX_QUADS`; the console is never drawn with the regions' panel.
 
 ## Failure modes
