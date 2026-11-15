@@ -102,15 +102,34 @@ OPTIONS = [
     # ------------------------------------------------------------------ World
     Option('open_kakariko', 'World', 'Kakariko gate',
            (('closed', 'Closed (Zelda\'s Letter)', OK), ('zelda', 'Open after the letter', NO_ADAPTER),
-            ('open', 'Open', NO_ADAPTER)), 'closed'),
+            ('open', 'Open', OK)), 'closed',
+           'Open: the gate and the Death Mountain part of the Fire Stone quest start as after the '
+           'guard read Zelda\'s Letter. The castle visit and the Door of Time quest are unchanged. '
+           'The letter has no use left: with the quest rewards shuffled it leaves the item pool and '
+           'Zelda gives a shuffled item instead. To be confirmed in game.', experimental=('open',)),
     Option('open_door_of_time', 'World', 'Door of Time open',
-           ((False, OK), (True, NO_ADAPTER)), False, kind='bool'),
+           ((False, OK), (True, OK)), False,
+           'The Door of Time stands open and the sword can be pulled without the Spiritual Stones or '
+           'the Song of Time. Zelda\'s escape still gives the Ocarina of Time and the Song of Time. '
+           'To be confirmed in game.', kind='bool', experimental=(True,)),
     Option('zora_fountain', 'World', 'King Zora',
            (('closed', 'Ruto\'s Letter required', OK), ('adult', 'Moved for adult', NO_ADAPTER),
-            ('open', 'Always moved', NO_ADAPTER)), 'closed'),
+            ('open', 'Always moved', OK)), 'closed',
+           'Always moved: King Zora starts aside, so Zora\'s Fountain needs no Ruto\'s Letter, and no '
+           'later scene moves him back. The letter can no longer be delivered, so it never turns into '
+           'a bottle. To be confirmed in game.',
+           experimental=('open',)),
     Option('gerudo_fortress', 'World', 'Gerudo Fortress',
-           (('normal', 'Four carpenters', OK), ('fast', 'One carpenter', NO_ADAPTER),
-            ('open', 'Open', NO_ADAPTER)), 'normal'),
+           (('normal', 'Four carpenters', OK), ('fast', 'One carpenter', OK),
+            ('open', 'Open', 'The Gerudo Membership Card is handed over by the rescue of the last '
+             'carpenter: with every carpenter free from the start its check would be lost.')), 'normal',
+           'One carpenter: the first carpenter freed, in any cell, ends the fortress and brings the '
+           'Gerudo Membership Card. To be confirmed in game.', experimental=('fast',)),
+    Option('open_gerudo_valley_bridge', 'World', 'Gerudo Valley bridge repaired',
+           ((False, OK), (True, OK)), False,
+           'The adult crosses the Gerudo Valley bridge on foot from the start, as after meeting the head '
+           'carpenter on the fortress side. The carpenters stay in their cells and the last rescue still '
+           'brings the Gerudo Membership Card. To be confirmed in game.', kind='bool', experimental=(True,)),
     Option('starting_age', 'World', 'Starting age',
            (('child', 'Child', OK), ('adult', 'Adult', NO_ADAPTER), ('random', 'Random', NO_ADAPTER)), 'child'),
     # ------------------------------------------------------------------- Goal

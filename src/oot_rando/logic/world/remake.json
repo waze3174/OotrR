@@ -18,16 +18,78 @@
    "why": "Richard only runs away once the Kakariko gate guard has read Zelda's Letter (Logic/Market_Child_Prefab_f3a2: RunningRichard needs Npc_Hylia_Soldier_003_GateOpen); before that he stays home with his owner (14/11, Discord report)."
   },
   "Song from Saria": {
-   "rule": "is_child and Zeldas_Letter and at('GC Darunias Chamber', is_child)",
-   "why": "Saria teaches her song during the Fire Stone quest (Challenge Get_StoneOfFire, step SariaMelodyGet), only after Darunia asked for music in his chamber (11/11: Kokiri Sword behind the Skull Kid)."
+   "rule": "is_child and 'Kakariko Village Gate Open' and at('GC Darunias Chamber', is_child)",
+   "why": "Saria teaches her song during the Fire Stone quest (Challenge Get_StoneOfFire, step SariaMelodyGet), only after Darunia asked for music in his chamber (11/11: Kokiri Sword behind the Skull Kid). The quest reaches Death Mountain when the Kakariko guard reads Zelda's Letter (or with the gate open from the start), not on the letter held."
   },
   "Song from Ocarina of Time": {
    "rule": "is_child and has_all_stones and 'Met Zelda'",
    "why": "Zelda's escape (Challenge DoorOfTime) needs Goto_HyruleCastle and Impa's send-off first. The game now starts it on the three stones held (patching/story_fixes.py), not only at the end of Dodongo's Cavern and Jabu-Jabu's Belly (15/11, Discord report)."
   },
   "Master Sword Pedestal": {
-   "rule": "has_all_stones and 'Met Zelda'",
-   "why": "The Door of Time opens in the same DoorOfTime challenge, after Zelda's escape: the Song of Time alone (songs shuffled) does not open it."
+   "rule": "open_door_of_time or (has_all_stones and 'Met Zelda')",
+   "why": "The Door of Time opens in the same DoorOfTime challenge, after Zelda's escape: the Song of Time alone (songs shuffled) does not open it. With the door open from the start (patching/world_openings.py) the first pull needs neither."
+  },
+  "Gerudo Training Ground Heavy Block First Chest": {
+   "rule": "can_use(Bow) or can_use(Slingshot)",
+   "why": "The chest of the first heavy block room is opened by shooting a target, not reached freely (prudence until checked in game)."
+  },
+  "GC Maze Center Chest": {
+   "rule": "can_blast_or_smash",
+   "why": "The remake keeps the silver boulder for a chest of its own: the Silver Gauntlets no longer reach the center and right chests (prudence until checked in game)."
+  },
+  "GC Maze Right Chest": {
+   "rule": "can_blast_or_smash",
+   "why": "Same as GC Maze Center Chest."
+  },
+  "LH Sun": {
+   "rule": "'Water Temple Clear' and can_use(Bow)",
+   "why": "Shooting the sun from the scarecrow pillar is not counted: only after the lake refills (prudence until checked in game)."
+  },
+  "Big Poe Kill": {
+   "rule": "can_ride_epona and Bow and has_bottle and can_use(Hookshot)",
+   "why": "One of the Big Poe spots is only reachable with the Hookshot in the remake (prudence until checked in game)."
+  },
+  "Colossus Great Fairy Reward": {
+   "rule": "can_play(Zeldas_Lullaby) and Progressive_Wallet",
+   "why": "Prudence: this Great Fairy's reward is held back until the first wallet upgrade, until her flow is checked in game."
+  },
+  "OGC Great Fairy Reward": {
+   "rule": "can_play(Zeldas_Lullaby) and Progressive_Wallet",
+   "why": "Same as Colossus Great Fairy Reward."
+  },
+  "Sheik at Temple": {
+   "rule": "is_adult and 'Forest Temple Clear'",
+   "why": "Sheik's Temple of Time scene follows the Forest Sage's awakening (boss beaten), not the Forest Medallion held: a starting medallion only fills the pouch."
+  },
+  "Sheik in Kakariko": {
+   "rule": "is_adult and 'Forest Temple Clear' and 'Fire Temple Clear' and 'Water Temple Clear'",
+   "why": "Same reason as Sheik at Temple: the scene follows the three sages awakened, not the three medallions held."
+  },
+  "ToT Light Arrows Cutscene": {
+   "rule": "is_adult and can_trigger_lacs and (lacs_condition != 'vanilla' or ('Shadow Temple Clear' and 'Spirit Temple Clear'))",
+   "why": "With the vanilla condition, Zelda appears after the Shadow and Spirit Sages are awakened (bosses beaten), not on the two medallions held (starting medallions)."
+  },
+  "Song from Malon": {
+   "rule": "is_child and 'Met Zelda' and Ocarina and at_day",
+   "why": "The base rule uses Zelda's Letter as the sign that Zelda was met. The remake reads the castle quest, never the letter item (only the Kakariko guard does), so the letter can leave the pool with the gate open."
+  },
+  "LLR Talons Chickens": {
+   "rule": "is_child and at_day and 'Met Zelda'",
+   "why": "Talon's cucco game depends on the castle quest (Minigame_FindOutCucco: Goto_HyruleCastle past Step03_02), not on Zelda's Letter held."
+  }
+ },
+ "exit_rules": {
+  "ZR Front -> Zora River": {
+   "rule": "can_blast_or_smash",
+   "why": "The remake does not let adult Link hop past the boulder at the river mouth: it must be blown up or smashed (prudence until checked in game)."
+  },
+  "Market Back Alley -> Market Bombchu Shop": {
+   "rule": "at_night and 'Dodongos Cavern Clear'",
+   "why": "The Bombchu Shop only opens once King Dodongo is beaten (prudence until checked in game)."
+  },
+  "Lake Hylia -> Water Temple Lobby": {
+   "rule": "is_adult and Hookshot and (Iron_Boots or (Longshot and (Progressive_Scale, 2) and 'King Zora Thawed'))",
+   "why": "The gate switch of the lake (HyruleField_LakeHylia_Common_Prefab_6a9d) only reacts while the Iron Boots are worn. Without them the gate only opens by itself once SageOfWater reaches Step05 (King Zora thawed, or the Serenade in the Ice Cavern): diving with the Golden Scale is not enough before that."
   }
  },
  "events": {
@@ -35,6 +97,48 @@
    "Met Zelda": {
     "rule": "is_child",
     "why": "Zelda in the castle garden completes Goto_HyruleCastle, which starts DoorOfTime; Impa's send-off follows."
+   }
+  },
+  "Kakariko Village": {
+   "Cojiro Access": {
+    "rule": "is_adult and at_day and 'Wake Up Adult Talon'",
+    "why": "Talon's brother only hands over Cojiro by day."
+   }
+  },
+  "King Dodongo Boss Room": {
+   "Dodongos Cavern Clear": {
+    "rule": "((can_use(Megaton_Hammer) and logic_dc_hammer_floor) or has_explosives or king_dodongo_shortcuts) and (((Bombs or Progressive_Strength_Upgrade) and can_jumpslash) or deadly_bonks == 'ohko')",
+    "why": "King Dodongo beaten (same rule as his reward), for the story steps that follow the boss and not the Goron Ruby held."
+   }
+  },
+  "Phantom Ganon Boss Room": {
+   "Forest Temple Clear": {
+    "rule": "can_use(Hookshot) or can_use(Bow) or (can_use(Slingshot) and Kokiri_Sword)",
+    "why": "Phantom Ganon beaten: the Forest Sage awakens."
+   }
+  },
+  "Volvagia Boss Room": {
+   "Fire Temple Clear": {
+    "rule": "can_use(Goron_Tunic) and can_use(Megaton_Hammer)",
+    "why": "Volvagia beaten: the Fire Sage awakens."
+   }
+  },
+  "Bongo Bongo Boss Room": {
+   "Shadow Temple Clear": {
+    "rule": "(Kokiri_Sword or is_adult) and (can_use(Hookshot) or can_use(Bow) or can_use(Slingshot) or logic_shadow_bongo) and (can_use(Lens_of_Truth) or logic_lens_bongo)",
+    "why": "Bongo Bongo beaten: the Shadow Sage awakens."
+   }
+  },
+  "Twinrova Boss Room": {
+   "Spirit Temple Clear": {
+    "rule": "can_use(Mirror_Shield)",
+    "why": "Twinrova beaten: the Spirit Sage awakens."
+   }
+  },
+  "Market Mask Shop": {
+   "Skull Mask": {
+    "rule": "'Kakariko Village Gate Open' and (complete_mask_quest or at('Kakariko Village', is_child))",
+    "why": "The mask shop opens on the Kakariko gate flag (Npc_Hylia_Soldier_003_GateOpen in Market_Child modules and DisplayShop), not on Zelda's Letter held."
    }
   }
  },

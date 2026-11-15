@@ -477,6 +477,17 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
                 extra_raw[ACTION_GUIDE_FLOW])
             # The clock runs before Zelda (Impa's send-off flag set at the start).
             story['clock'] = story_fixes.CLOCK_FLAG
+            # Zones open from the start, kept open (patching/world_openings.py).
+            from oot_rando.patching.world_openings import OPENINGS, apply_openings
+            options = full.get('options') or {}
+            if any(options.get(option) == value for option, value, _ in OPENINGS):
+                from oot_rando.patching.quest_guard import CHALLENGES
+                extra_raw[GAMEDATA], opened_flows, story['openings'] = apply_openings(
+                    options, lambda path: extra_raw.get(path) or decompress(read(path), d),
+                    extra_raw.get(GAMEDATA) or decompress(read(GAMEDATA), d),
+                    decompress(read(CHALLENGES), d),
+                    lambda path: extra_raw.get(path) or read(path))
+                extra_raw.update(opened_flows)
         gamedata_source = extra_raw.get(GAMEDATA)
         if gamedata_source is None:
             gamedata_source = decompress(read(GAMEDATA), d)
@@ -489,6 +500,9 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
         opening = 'Event/EventFlow/OpeningEvent.bfevfl.zs'
         extra_raw[opening], seed_markers = add_collection_markers(
             decompress(read(opening), d), {'Event3': marker_name})
+        # Every seed: "Randomizer" badge under the title screen logo.
+        from oot_rando.patching.title_badge import TITLE_BNTX, add_title_badge
+        extra_raw[TITLE_BNTX], title_badge = add_title_badge(decompress(read(TITLE_BNTX), d))
         goal_markers = []
         if goal_name:
             # Archipelago goal: set once Ganon's defeat completes the native challenge,
@@ -516,7 +530,7 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
                 for path in event_paths(members, big_poes.FLOW):
                     extra_raw[path] = big_poes.patch_flow(
                         extra_raw[path] if path in extra_raw else decompress(read(path), d), poe_count)
-        skips = {}
+        skips = {'title_badge': title_badge}
         if settings.full is not None:
             skips['ocarina_guide'] = ocarina_guide
             skips['dc_boulder_bombs'] = dc_boulder

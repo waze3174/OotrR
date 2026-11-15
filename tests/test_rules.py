@@ -89,6 +89,68 @@ class LogicTests(unittest.TestCase):
         self.assertNotIn(dog, self.reachable(no_letter, without))
         self.assertIn(dog, self.reachable(no_letter, everything))
 
+    def exit_rule(self, region, target):
+        return dict(self.logic.regions[region]['exits'])[target]
+
+    def test_remake_exit_rules_replace_base_exits(self):
+        class Day:
+            tod = {'adult': True, 'child': True}
+        river = self.exit_rule('ZR Front', 'Zora River')
+        self.assertFalse(river(Day, {}, 'adult'))
+        self.assertTrue(river(Day, {'Megaton Hammer': 1}, 'adult'))
+        self.assertTrue(river(Day, {'Bomb Bag': 1}, 'child'))
+        shop = self.exit_rule('Market Back Alley', 'Market Bombchu Shop')
+        self.assertFalse(shop(Day, {}, 'child'))
+
+    def test_water_temple_gate_needs_iron_boots_or_thawed_king(self):
+        class Day:
+            tod = {'adult': True, 'child': True}
+        gate = self.exit_rule('Lake Hylia', 'Water Temple Lobby')
+        dive = {'Progressive Hookshot': 2, 'Progressive Scale': 2}
+        self.assertFalse(gate(Day, dive, 'adult'))
+        self.assertTrue(gate(Day, dict(dive, **{'King Zora Thawed': 1}), 'adult'))
+        self.assertTrue(gate(Day, {'Progressive Hookshot': 1, 'Iron Boots': 1}, 'adult'))
+
+    def test_unknown_remake_exit_is_refused(self):
+        from oot_rando.logic import world
+        world.REMAKE_EXIT_RULES['Nowhere -> Elsewhere'] = 'True'
+        try:
+            with self.assertRaises(ValueError):
+                Logic(self.data, {'open_forest': 'closed_deku'})
+        finally:
+            del world.REMAKE_EXIT_RULES['Nowhere -> Elsewhere']
+
+    def test_sheik_and_light_arrows_follow_bosses_not_medallions(self):
+        # A starting medallion only fills the pouch: the sage scenes follow the boss.
+        class Day:
+            tod = {'adult': True, 'child': True}
+        rules = dict(self.logic.location_rules)
+        sheik = rules['Sheik at Temple'][0][1]
+        self.assertFalse(sheik(Day, {'Forest Medallion': 1}, 'adult'))
+        self.assertTrue(sheik(Day, {'Forest Temple Clear': 1}, 'adult'))
+        lacs = rules['ToT Light Arrows Cutscene'][0][1]
+        medals = {'Shadow Medallion': 1, 'Spirit Medallion': 1}
+        self.assertFalse(lacs(Day, medals, 'adult'))
+        self.assertTrue(lacs(Day, dict(medals, **{'Shadow Temple Clear': 1, 'Spirit Temple Clear': 1}), 'adult'))
+
+    def test_stricter_rules_stay_reachable_with_open_zones(self):
+        # The stricter remake rules must not cut a check off once a zone starts
+        # open; the boss events come from the boss rooms, never from the pouch.
+        checks = ['Gerudo Training Ground Heavy Block First Chest', 'GC Maze Center Chest', 'GC Maze Right Chest',
+                  'LH Sun', 'Big Poe Kill', 'Colossus Great Fairy Reward', 'OGC Great Fairy Reward',
+                  'Sheik at Temple', 'Sheik in Kakariko', 'ToT Light Arrows Cutscene']
+        events = {'Dodongos Cavern Clear', 'Forest Temple Clear', 'Fire Temple Clear', 'Water Temple Clear',
+                  'Shadow Temple Clear', 'Spirit Temple Clear'}
+        for options in ({'open_forest': 'closed_deku'}, {'open_forest': 'open'},
+                        {'open_forest': 'open', 'open_kakariko': 'open'},
+                        {'open_forest': 'open', 'open_door_of_time': True},
+                        {'open_forest': 'open', 'zora_fountain': 'open', 'gerudo_fortress': 'open'}):
+            logic = Logic(self.data, options)
+            items = Counter({item: 9 for item in logic.referenced if item not in events})
+            _, collected, _ = logic.sweep({check: None for check in checks}, logic.new_state(items))
+            for check in checks:
+                self.assertIn(check, collected, f'{check} with {options}')
+
     def test_lost_woods_chest_needs_adult_bean_ride(self):
         # The remake's only Lost Woods chest stands on a ledge served by the
         # adult bean platform (soil near the bridge), not in a bombable grotto.

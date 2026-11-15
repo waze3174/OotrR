@@ -296,6 +296,7 @@ def scan_maps(nup, dictionaries, members, progress=None):
     report = progress or (lambda message: None)
     maps, groups, enemies = {}, defaultdict(list), []
     walls = defaultdict(list)  # folder -> (age, position) of destructible walls
+    gimmicks = defaultdict(list)  # folder -> (age, guard, radius, position) of NEAR_GUARDS actors
     names = sorted(p for p in members if p.startswith('Banc/') and p.endswith('.bcett.byml.zs'))
     for index, path in enumerate(names):
         if index % 20 == 0:
@@ -310,6 +311,9 @@ def scan_maps(nup, dictionaries, members, progress=None):
             name = actor.get('Gyaml', '')
             if BLAST_WALL.match(name) and isinstance(actor.get('Translate'), list):
                 walls[folder].append((map_age(path), actor['Translate']))
+            for pattern, radius, guard in NEAR_GUARDS:
+                if pattern.match(name) and isinstance(actor.get('Translate'), list):
+                    gimmicks[folder].append((map_age(path), guard, radius, actor['Translate']))
             if type(actor.get('Hash')) is not int:
                 continue
             dynamic = actor.get('Dynamic') if isinstance(actor.get('Dynamic'), dict) else {}
@@ -325,6 +329,7 @@ def scan_maps(nup, dictionaries, members, progress=None):
     for variants in groups.values():
         for variant in variants:
             variant['behind_wall'] = _behind_wall(variant, walls[variant['folder']])
+            variant['near_guards'] = _near_guards(variant, gimmicks[variant['folder']])
     return maps, dict(groups), enemies
 
 
@@ -348,6 +353,15 @@ def _behind_wall(variant, walls):
     return any((wall_age is None or age is None or wall_age == age) and len(point) == 3
                and sum((a - b) ** 2 for a, b in zip(position, point)) <= BLAST_WALL_RADIUS ** 2
                for wall_age, point in walls)
+
+
+def _near_guards(variant, gimmicks):
+    position, age = variant.get('position'), map_age(variant['resource'])
+    if not isinstance(position, list) or len(position) != 3:
+        return []
+    return sorted({guard for gimmick_age, guard, radius, point in gimmicks
+                   if (gimmick_age is None or age is None or gimmick_age == age) and len(point) == 3
+                   and sum((a - b) ** 2 for a, b in zip(position, point)) <= radius ** 2})
 
 
 def junk_reason(variants):
@@ -390,6 +404,21 @@ LENS_GUARD = 'Souls|Lens of Truth|Magic Meter'
 BLAST_WALL = re.compile(r'^Obj_.*Crack(Wall|Floor)')
 BLAST_WALL_RADIUS = 3.0
 BOMBS_GUARD = 'Souls|Bomb Bag'
+# Chests the zone heuristic (``scene`` mode) places have no AP rule of their own:
+# they inherit the rules of every other chest of the area, which says nothing of
+# the gimmick standing next to them. A chest close to one of these actors also
+# needs what the gimmick asks (stricter than needed at worst). Found by a scan of
+# the remake-only chests of 1.1.1 (15/11): time blocks (Ice Cavern, Sacred Forest
+# Meadow, Gerudo Training Ground), hookshot targets (Fire and Water Temples),
+# the Zora's Fountain scarecrow ledge, Lens walls, timed torches, cracked walls.
+NEAR_GUARDS = (
+    (re.compile(r'^(Obj_SongOfTime(Block|Sign)|CheckAttentionActor_TimeBlock)'), 10.0, 'Souls|Ocarina|Song of Time'),
+    (re.compile(r'^Obj_(.*_)?HookShotTarget'), 10.0, 'Souls|Progressive Hookshot'),
+    (re.compile(r'^Obj_ScarecrowMarker'), 10.0, 'Souls|Progressive Hookshot|Ocarina'),
+    (re.compile(r'^Obj_.*GlassTruth'), 8.0, LENS_GUARD),
+    (re.compile(r'^Obj_CandleStick_TimeExtinguish'), 10.0, 'Souls|Dins Fire|Magic Meter'),
+    (re.compile(r'^(Obj_.*Crack(Wall|Floor)|WallCrack_)'), 6.0, BOMBS_GUARD),
+)
 
 
 def chest_guards(variants):
@@ -399,6 +428,13 @@ def chest_guards(variants):
     if any(v.get('behind_wall') for v in variants):
         guards.append(BOMBS_GUARD)
     return guards
+
+
+def _add_near_guards(entry):
+    for variant in entry['variants']:
+        for guard in variant.get('near_guards', ()):
+            if guard not in entry['guards']:
+                entry['guards'].append(guard)
 
 
 def match_locations(groups, data, logic, mode='strict'):
@@ -482,6 +518,7 @@ def match_locations(groups, data, logic, mode='strict'):
             if options:
                 for entry in entries:
                     entry.update(kind='group', ap=options, reason=None)
+                    _add_near_guards(entry)
                 used.update(options)
             else:
                 # No chest left in the area: require every AP check of the area.
@@ -492,6 +529,7 @@ def match_locations(groups, data, logic, mode='strict'):
                 if area:
                     for entry in entries:
                         entry.update(kind='area', ap=area, reason=None)
+                        _add_near_guards(entry)
     for entry in pending.values():
         if entry['kind'] == 'junk' and not entry['reason']:
             entry['reason'] = 'no_reliable_ap_match'
