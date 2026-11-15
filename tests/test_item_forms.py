@@ -4,9 +4,9 @@ import unittest
 
 from oot_rando.formats import byml_codec
 from oot_rando.formats.inspect_resources import sarc
-from oot_rando.game.item_forms import (NATIVE_WORLD, WORLD_POUCH_FLAGS, WORLD_TEMPLATE, build_pack, canonical_of,
-                                       form_actor, is_derived, is_world_derived, resolve_components,
-                                       _table_components)
+from oot_rando.game.item_forms import (DROP_PREFIX, DROP_TEMPLATE, NATIVE_WORLD, WORLD_POUCH_FLAGS, WORLD_TEMPLATE,
+                                       add_rsdb_rows, build_pack, canonical_of, form_actor, is_derived,
+                                       is_world_derived, resolve_components, _table_components)
 
 # Components that make the gold token's AI save the skulltula it drops from
 # (REALAZK pickup_pack/kit.rs, MIT, ae9e4063: REFS and LIFE_REF).
@@ -43,7 +43,21 @@ def fake_packs():
         expansion[1:]: doc({'GameData': 'Bomb', 'MaxNum': 20}),
         'Component/PouchContentParam/BombBag.game__component__PouchContentParam.bgyml': doc({'GetType': 1}),
     }
-    return {WORLD_TEMPLATE: template, 'Item_BombBag_Small': source}
+    drop = {
+        f'Actor/{DROP_TEMPLATE}.engine__actor__ActorParam.bgyml': doc({
+            '$parent': 'Work/Actor/Obj_Item_Base.engine__actor__ActorParam.gyml', 'Components': {
+                'CaptureRef': '?Component/CaptureParam/Item_DekuNut.game__component__CaptureParam.bgyml',
+                'PouchContentRef': '?Component/PouchContentParam/Nut.game__component__PouchContentParam.bgyml'}}),
+        'Actor/Obj_Item_Base.engine__actor__ActorParam.bgyml': doc({'Components': {
+            'AIInfoRef': '?AI/AIInfo/DropItem.engine__actor__AIInfo.bgyml',
+            'GameParameterTableRef': '?GameParameter/GameParameterTable/Obj_Item_Base.engine__actor__GameParameterTable.bgyml'}}),
+        'Component/CaptureParam/Item_DekuNut.game__component__CaptureParam.bgyml': doc({}),
+        'Component/PouchContentParam/Nut.game__component__PouchContentParam.bgyml': doc({'DefaultAutoGet': True}),
+    }
+    for path in ('GameParameter/GameParameterTable/Obj_Item_Base.engine__actor__GameParameterTable.bgyml',
+                 'GameParameter/DropBoundParam/Obj_Item_Base.game__drop__DropBoundParam.bgyml'):
+        drop[path] = template[path]
+    return {WORLD_TEMPLATE: template, DROP_TEMPLATE: drop, 'Item_BombBag_Small': source}
 
 
 class DerivedGameParameterTests(unittest.TestCase):
@@ -86,6 +100,48 @@ class DerivedGameParameterTests(unittest.TestCase):
                     for ref in table.values():
                         if isinstance(ref, str) and ref.startswith('?'):
                             self.assertIn(ref[1:], files)
+
+
+class EnvironmentDropTests(unittest.TestCase):
+    def test_drop_names_round_trip(self):
+        actor = DROP_PREFIX + 'Item_Hookshot'
+        self.assertTrue(is_world_derived(actor))
+        self.assertEqual(canonical_of(actor), 'Item_Hookshot')
+        self.assertFalse(actor.startswith('Obj_Rando_'))
+
+    def test_drop_is_built_on_the_falling_pickup(self):
+        derived = DROP_PREFIX + 'Item_BombBag_Small'
+        raw, template = build_pack(derived, fake_packs().get, byml_codec)
+        self.assertEqual(template, f'Pack/Actor/{DROP_TEMPLATE}.pack.zs')
+        files = sarc(raw)
+        components = resolve_components(files, derived, byml_codec)
+        # Behaviour inherited from Obj_Item_Base (DropItem AI), not the token's.
+        self.assertEqual(components['AIInfoRef'], '?AI/AIInfo/DropItem.engine__actor__AIInfo.bgyml')
+        self.assertNotIn('CaptureRef', components)
+        # The game parameters inherited by the template still receive the item's.
+        table = _table_components(files, components['GameParameterTableRef'], byml_codec)
+        self.assertIn('ExpansionMaxNumActor', table)
+        self.assertEqual(table['DropBoundParam'],
+                         '?GameParameter/DropBoundParam/Obj_Item_Base.game__drop__DropBoundParam.bgyml')
+        pouch = byml_codec.load(files[components['PouchContentRef'][1:]])['root']
+        self.assertEqual({key: pouch[key] for key in WORLD_POUCH_FLAGS}, WORLD_POUCH_FLAGS)
+        self.assertEqual(pouch['PouchActor'], 'Work/Actor/Item_BombBag_Small.engine__actor__ActorParam.gyml')
+
+    def test_drop_rows_take_the_falling_pickup_and_the_item_pouch(self):
+        def row(name, **extra):
+            return dict({'__RowId': name}, **extra)
+        tables = {'ActorInfo': [row(WORLD_TEMPLATE, DisplayRadius=300.0), row(DROP_TEMPLATE, DisplayRadius=40.0),
+                                row('Item_Hookshot', FmdbName='Hookshot')],
+                  'GameActorInfo': [row(WORLD_TEMPLATE, IsRespawn=True), row(DROP_TEMPLATE, IsRespawn=True)],
+                  'PouchActorInfo': [row(WORLD_TEMPLATE, PouchCategory='KeyItem'),
+                                     row(DROP_TEMPLATE, PouchCategory='Material')]}
+        actor = DROP_PREFIX + 'Item_Hookshot'
+        add_rsdb_rows(tables, [actor])
+        rows = {name: {r['__RowId']: r for r in t} for name, t in tables.items()}
+        self.assertEqual(rows['ActorInfo'][actor]['DisplayRadius'], 40.0)
+        self.assertEqual(rows['ActorInfo'][actor]['FmdbName'], 'Hookshot')
+        # No pouch row for the item: the token's, never the deku nut's ammunition row.
+        self.assertEqual(rows['PouchActorInfo'][actor]['PouchCategory'], 'KeyItem')
 
 
 class SkulltulaDropTests(unittest.TestCase):
@@ -277,6 +333,38 @@ class RealPackNameTests(unittest.TestCase):
                 for ref in components.values():
                     if isinstance(ref, str) and ref.startswith('?') and ref[1:] in source:
                         self.assertTrue(ref[1:] in files, ref)
+
+    def test_environment_drops_fall_like_native_drops(self):
+        """Pots, trees, rocks...: the DropItem AI (ExecuteDropBound), physics, blackboard
+        and death of a native drop, none of the token's standing behaviour."""
+        rupee = resolve_components(self.read_pack('Obj_Rupee_Green'), 'Obj_Rupee_Green', byml_codec)
+        nut_pack = self.read_pack(DROP_TEMPLATE)
+        nut = resolve_components(nut_pack, DROP_TEMPLATE, byml_codec)
+        token = resolve_components(self.read_pack(WORLD_TEMPLATE), WORLD_TEMPLATE, byml_codec)
+        self.assertEqual(nut['AIInfoRef'], '?AI/AIInfo/DropItem.engine__actor__AIInfo.bgyml')
+        self.assertIn('/DropItem.phive', byml_codec.load(nut_pack[nut['PhysicsRef'][1:]])['root']['ControllerSetPath'])
+        for canonical in ('Item_Hookshot', 'TBox_Rupee_Red', 'Obj_Heart_Piece', 'Item_Token_Gold',
+                          'Item_BombBag_Small', 'Item_Ocarina_Time', 'Item_Dungeon_SmallKey'):
+            actor = DROP_PREFIX + canonical
+            with self.subTest(actor=actor):
+                files = sarc(build_pack(actor, self.read_pack, byml_codec)[0])
+                components = resolve_components(files, actor, byml_codec)
+                for key in ('AIInfoRef', 'BlackboardRef', 'DeathRef', 'AttentionSenderRef'):
+                    self.assertEqual(components[key], rupee[key], key)
+                for key in ('PhysicsRef', 'EventPerformerRef'):
+                    self.assertEqual(components[key], nut[key], key)
+                for key in TOKEN_KIT_REFS:
+                    self.assertNotEqual(components.get(key), token[key], key)
+                self.assertNotIn('CaptureRef', components)
+                own = resolve_components(self.read_pack(canonical), canonical, byml_codec)
+                self.assertEqual(components['ActorNameRef'], own['ActorNameRef'])
+                self.assertEqual(components['ModelInfoRef'], own['ModelInfoRef'])
+                for path in ('AI/AIInfo/DropItem.engine__actor__AIInfo.bgyml',
+                             nut['PhysicsRef'][1:], nut['DeathRef'][1:], nut['BlackboardRef'][1:]):
+                    self.assertIn(path, files)
+                pouch = byml_codec.load(files[components['PouchContentRef'][1:]])['root']
+                self.assertEqual({key: pouch.get(key) for key in WORLD_POUCH_FLAGS}, WORLD_POUCH_FLAGS)
+                self.assertEqual(pouch['PouchActor'], f'Work/Actor/{canonical}.engine__actor__ActorParam.gyml')
 
 
 if __name__ == '__main__':

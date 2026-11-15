@@ -110,6 +110,13 @@ names of REALAZK's token kits, at most 25 characters) or `Obj_Rando_<item>`. The
 pouch sets `PlayGetEventManyTimes` and `IsPlayGetEventPouchMax`, so the get event
 plays on every pickup, even at full capacity. The tracker reads the same row.
 
+Pots, bushes, rocks, crates, beehives and trees: their first-collection pickup
+(`Obj_RandoOnce_*`) is built on a native falling drop (`Obj_DekuNut`), not
+on the token. The token's AI keeps it standing where it spawns
+(`ExecuteKeepStandingPosture`), so an item shaken from a tree or out of a pot thrown at
+a wall hung in the air. Native drops share `Obj_Item_Base`'s `DropItem` AI
+(`ExecuteDropBound`: fall, bounce, land), physics, blackboard and death.
+
 ## Dungeon-specific keys (`key_adapter.py`)
 
 Remake keys are generic: `Item_Dungeon_SmallKey`/`BossKey` are credited by native

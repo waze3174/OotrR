@@ -14,6 +14,8 @@ fabricated from a native template (``Obj_Rando_<canonical>`` from the gold
 token pickup, ``Shop_Rando_<canonical>`` from a shop bundle) with the model and
 pouch content of the canonical item. A gold skulltula drop is always built on
 the token, as ``<native pickup>_GS`` when the item has a native world pickup.
+Drops of pots, trees and other environment sources are built on a native
+falling pickup instead (``Obj_RandoDrop_<canonical>``, see ``DROP_TEMPLATE``).
 Their behaviour is experimental until an in-game pilot confirms it.
 """
 import copy
@@ -24,6 +26,15 @@ SHOP_PREFIX = 'Shop_Rando_'
 # (naming of REALAZK pickup_pack/kit.rs, MIT, ae9e4063).
 KIT_SUFFIX = '_GS'
 WORLD_TEMPLATE = 'Obj_Token_Gold'
+# Environment drops (pots, trees, rocks…). The token's AI keeps it standing where
+# it spawns (ExecuteKeepStandingPosture), so a drop built on it hangs in the air.
+# Native drops share Obj_Item_Base's DropItem AI (ExecuteDropBound: fall, bounce,
+# land), DropItem physics, blackboard and death; the deku nut is one of them with
+# the generic DropItem controller set and the token's own get event performer.
+DROP_PREFIX = 'Obj_RandoDrop_'
+DROP_TEMPLATE = 'Obj_DekuNut'
+# Template components that only describe the deku nut itself (its UI icon capture).
+DROP_TEMPLATE_DROPPED = ('CaptureRef',)
 SHOP_TEMPLATE = 'Shop_ArrowBundle_01'
 SHOP_PRICE = 10  # affordable without any wallet upgrade: the logic ignores prices
 LINK_KEYS = ('ELinkRef', 'SLinkRef')   # effect / sound users of the actor (not XLink: shared ActorBasic)
@@ -58,7 +69,12 @@ def _kit_native(actor):
 
 
 def is_world_derived(actor):
-    return actor.startswith(WORLD_PREFIX) or _kit_native(actor) is not None
+    return actor.startswith((WORLD_PREFIX, DROP_PREFIX)) or _kit_native(actor) is not None
+
+
+def world_template(derived):
+    """Native pickup whose behaviour a derived world actor takes."""
+    return DROP_TEMPLATE if derived.startswith(DROP_PREFIX) else WORLD_TEMPLATE
 
 
 def is_derived(actor):
@@ -126,7 +142,7 @@ def canonical_of(derived):
     native = _kit_native(derived)
     if native:
         return WORLD_CANONICAL[native]
-    for prefix in (WORLD_PREFIX, SHOP_PREFIX):
+    for prefix in (WORLD_PREFIX, DROP_PREFIX, SHOP_PREFIX):
         if derived.startswith(prefix):
             return derived[len(prefix):]
     raise ValueError('Not a derived actor: ' + derived)
@@ -185,7 +201,7 @@ def _table_components(pack, ref, codec):
     return merged
 
 
-def _merge_game_parameters(derived, source, source_components, files, components, codec):
+def _merge_game_parameters(derived, source, source_components, files, components, codec, inherited=None):
     """Give the derived actor the game parameters of the canonical item.
 
     The item's ``GameParameterTable`` carries what the get applies to the save:
@@ -195,7 +211,8 @@ def _merge_game_parameters(derived, source, source_components, files, components
     its own pickup parameters (drop bounce, physics, menu) when both define a key.
     """
     source_table = _table_components(source, source_components.get('GameParameterTableRef'), codec)
-    template_ref = components.get('GameParameterTableRef')
+    # A template may inherit its table from its ``$parent`` (Obj_Item_Base).
+    template_ref = components.get('GameParameterTableRef') or (inherited or {}).get('GameParameterTableRef')
     template_path = _pack_path(template_ref) if isinstance(template_ref, str) else None
     if template_path not in files:
         raise ValueError('Model parameter table not found for ' + derived)
@@ -216,7 +233,7 @@ def build_pack(derived, read_pack, codec):
     """Return the SARC bytes of a derived actor and its template pack path."""
     canonical = canonical_of(derived)
     kind = 'world' if is_world_derived(derived) else 'shop'
-    template_name = WORLD_TEMPLATE if kind == 'world' else SHOP_TEMPLATE
+    template_name = world_template(derived) if kind == 'world' else SHOP_TEMPLATE
     template = read_pack(template_name)
     source = read_pack(canonical)
     if template is None or source is None:
@@ -226,6 +243,9 @@ def build_pack(derived, read_pack, codec):
     files = {k: v for k, v in template.items() if k != template_param}
     document = codec.load(template[template_param])
     components = document['root'].setdefault('Components', {})
+    if template_name == DROP_TEMPLATE:
+        for key in DROP_TEMPLATE_DROPPED:
+            components.pop(key, None)
     # Model, animations, name and animation states of the item; behaviour
     # (AI, physics, pickup, ASInfo autoplay) of the template.
     for key in ('ModelInfoRef', 'AnimationRef', 'ActorNameRef', 'ASRef'):
@@ -253,7 +273,8 @@ def build_pack(derived, read_pack, codec):
         pouch.update(WORLD_POUCH_FLAGS)
     files[pouch_path] = codec.dump({'endian': '<', 'version': 7, 'root': pouch})
     components['PouchContentRef'] = '?' + pouch_path
-    _merge_game_parameters(derived, source, source_components, files, components, codec)
+    _merge_game_parameters(derived, source, source_components, files, components, codec,
+                           resolve_components(template, template_name, codec))
     if canonical.startswith('Item_Soul_'):
         if kind != 'world':
             raise ValueError('Soul in a shop not supported: ' + derived)
@@ -296,13 +317,15 @@ def add_rsdb_rows(tables, derived_list):
     by_id = {name: {row['__RowId']: row for row in rows} for name, rows in tables.items()}
     for derived in derived_list:
         canonical = canonical_of(derived)
-        template = WORLD_TEMPLATE if is_world_derived(derived) else SHOP_TEMPLATE
+        world = is_world_derived(derived)
+        template = world_template(derived) if world else SHOP_TEMPLATE
         for name in RSDB_TABLES:
             rows = by_id[name]
             if derived in rows:
                 raise ValueError(f'Row {name} already present: {derived}')
             if name == 'PouchActorInfo':
-                base = rows.get(canonical) or rows.get(template)
+                # Pouch rows describe the item, not the pickup: drops fall back on the token's too.
+                base = rows.get(canonical) or rows.get(WORLD_TEMPLATE if world else SHOP_TEMPLATE)
             else:
                 base = rows.get(template)
             if base is None:

@@ -19,7 +19,7 @@ import uuid
 
 from oot_rando.formats import byml_codec
 from oot_rando.formats.inspect_resources import sarc
-from oot_rando.game.item_forms import (WORLD_CANONICAL, WORLD_PREFIX, SHOP_PREFIX, build_pack, canonical_of,
+from oot_rando.game.item_forms import (WORLD_CANONICAL, DROP_PREFIX, SHOP_PREFIX, build_pack, canonical_of,
                         is_derived, add_rsdb_rows)
 from oot_rando.patching.soul_adapter import FLAG_PREFIX as SOUL_FLAG_PREFIX, murmur3
 
@@ -406,7 +406,8 @@ def build_repeatable_packs(records, read_pack, read_raw, tables):
             continue
         if event is None:
             event = sarc(read_raw(EVENT_PACK))[EVENT_MEMBER]
-        standard = WORLD_PREFIX + record['canonical']
+        # Dropped by its source: a falling pickup, not the standing token.
+        standard = DROP_PREFIX + record['canonical']
         raw, template = build_pack(standard, read_pack, byml_codec)
         files = sarc(raw)
         old_path = f'Actor/{standard}.engine__actor__ActorParam.bgyml'

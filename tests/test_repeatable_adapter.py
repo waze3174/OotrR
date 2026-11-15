@@ -277,6 +277,57 @@ class LocalGraphTests(unittest.TestCase):
         finally:
             nup.stream.close()
 
+    def test_repeatable_pickups_fall_like_native_drops(self):
+        """Pots, trees, rocks...: the first-collection pickup is built on a falling drop."""
+        from oot_rando.formats.inspect_nup import Nup
+        from oot_rando.formats.inspect_resources import dictionaries
+        from oot_rando.game.item_forms import DROP_TEMPLATE, resolve_components
+        from oot_rando.game.world_maps import effective_members
+        from oot_rando.patching.repeatable_adapter import build_repeatable_packs
+        from oot_rando.patching.soul_adapter import RSDB_FILES
+        nup = Nup(os.environ['OOT_NUP'])
+        try:
+            dic, members = dictionaries(nup), effective_members(nup)
+
+            def read_raw(path):
+                return decompress(nup.read(members[path]), dic)
+
+            def read_pack(actor):
+                path = f'Pack/Actor/{actor}.pack.zs'
+                return sarc(read_raw(path)) if path in members else None
+
+            tables = {name: byml_codec.load(read_raw(path))['root'] for name, path in RSDB_FILES.items()}
+            records = [{'id': f'zone#{source}#{i}', 'actor': f'Obj_RandoOnce_{i:016x}', 'canonical': canonical,
+                        'kind': 'pickup', 'flag': f'Rando.Check.{i:016x}',
+                        'event_filename': f'RandoOnce_{i:016x}.event.root', 'variants': []}
+                       for i, (source, canonical) in enumerate((('trees', 'Item_Hookshot'), ('pots', 'TBox_Rupee_Red'),
+                                                                ('crates', 'Item_Dungeon_SmallKey')))]
+            new = build_repeatable_packs(records, read_pack, read_raw, tables)
+            rupee = resolve_components(read_pack('Obj_Rupee_Green'), 'Obj_Rupee_Green', byml_codec)
+            nut = resolve_components(read_pack(DROP_TEMPLATE), DROP_TEMPLATE, byml_codec)
+        finally:
+            nup.stream.close()
+        for record in records:
+            actor = record['actor']
+            with self.subTest(canonical=record['canonical']):
+                raw, template = new[f'Pack/Actor/{actor}.pack.zs']
+                self.assertEqual(template, f'Pack/Actor/{DROP_TEMPLATE}.pack.zs')
+                files = sarc(raw)
+                components = resolve_components(files, actor, byml_codec)
+                for key in ('BlackboardRef', 'DeathRef', 'AttentionSenderRef'):
+                    self.assertEqual(components[key], rupee[key], key)
+                self.assertEqual(components['PhysicsRef'], nut['PhysicsRef'])
+                self.assertNotIn('GameLifeConditionRef', components)
+                # The first-collection event and pouch settings stay the pickup's own.
+                event = byml_codec.load(files[components['EventPerformerRef'][1:]])['root']
+                self.assertEqual(event['EventUniqueAin'], f'Work/AI/Root/Event/{record["event_filename"]}.ain')
+                self.assertIn(f'AI/{record["event_filename"]}.ainb', files)
+                pouch = byml_codec.load(files[components['PouchContentRef'][1:]])['root']
+                self.assertIs(pouch['PlayGetEventManyTimes'], True)
+                self.assertEqual(pouch['PouchActor'], f'Work/Actor/{record["canonical"]}.engine__actor__ActorParam.gyml')
+                for rows in tables.values():
+                    self.assertEqual(sum(1 for row in rows if row['__RowId'] == actor), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
