@@ -119,7 +119,9 @@ a wall hung in the air. Native drops share `Obj_Item_Base`'s `DropItem` AI
 Each such pickup runs its own clone of that AI: when it spawns, it reads its check flag
 and deletes itself once the check is collected, so a source that respawns while the
 area stays loaded (a pot or rock when Link looks away) gives the item only once. The
-vanilla copy of the source takes over on the next area load.
+vanilla copy of the source takes over on the next area load. That copy has a new hash but
+keeps the original's `Phive.Placement.ID`: the area's static compound knows every source
+by that ID, and a tree (`IsAcquireOriginalSystemGroupId`) with an unknown one is not solid.
 
 ## Dungeon-specific keys (`key_adapter.py`)
 

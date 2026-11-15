@@ -27,7 +27,9 @@ class RepeatableSourceTests(unittest.TestCase):
         fallback = byml_codec.load(output['map'])['root']['Actors'][1]
         self.assertEqual(fallback['Links'][0]['Src'], fallback['Hash'])
         self.assertEqual(fallback['Links'][0]['Dst'], 2**63+3)
-        self.assertEqual(fallback['Phive']['Placement']['ID'], fallback['Hash'])
+        # The clone keeps the original's physics placement (its static compound entry).
+        self.assertNotEqual(fallback['Hash'], actor['Hash'])
+        self.assertEqual(fallback['Phive']['Placement']['ID'], actor['Hash'])
 
     def fixtures(self, original_presence=None, explicit=True):
         actor = {'Hash': byml_codec.U64(98765432123456789), 'Gyaml': 'Obj_Pot_A_01',

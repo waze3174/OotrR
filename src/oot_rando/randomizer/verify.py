@@ -366,8 +366,7 @@ def verify(nup_path, seed_dir):
                     for key in ('Src', 'Dst'):
                         if link.get(key) == original['Hash']:
                             link[key] = ident
-                if isinstance(fallback.get('Phive', {}).get('Placement'), dict):
-                    fallback['Phive']['Placement']['ID'] = ident
+                # Phive.Placement.ID stays the original's (static compound entry).
                 fallback['Presence'] = {'FlagName': record['flag'], 'IsNegation': False, 'IsCheckLazy': None}
                 expected_fallbacks[ident] = fallback
             actual_fallbacks = {a['Hash']: a for a in after['Actors'] if a.get('Hash') in expected_fallbacks}

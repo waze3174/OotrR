@@ -646,7 +646,8 @@ def patch_repeatable_sources(records, maps, raw_maps):
 
     Call AFTER normal map reward patches. The original actor and its links/hash
     remain the first source. The fallback is a full copy of vanilla data,
-    including absence of an explicit drop and native drop-table settings.
+    including absence of an explicit drop and native drop-table settings, under a
+    new hash but with the original's physics placement ID.
     """
     documents, originals, seen = {}, {}, set()
     for record in records:
@@ -676,8 +677,9 @@ def patch_repeatable_sources(records, maps, raw_maps):
                 for key in ('Src', 'Dst'):
                     if link.get(key) == original['Hash']:
                         link[key] = byml_codec.U64(ident)
-            if isinstance(fallback.get('Phive', {}).get('Placement'), dict):
-                fallback['Phive']['Placement']['ID'] = byml_codec.U64(ident)
+            # Phive.Placement.ID stays the original's: the area's static compound knows
+            # every source by that ID, and a tree (IsAcquireOriginalSystemGroupId) whose
+            # ID it does not know is not solid. Presence never loads both at once.
             fallback['Presence'] = {'FlagName': record['flag'], 'IsNegation': False, 'IsCheckLazy': PRESENCE_LAZY}
             actors.append(fallback)
     for record in records:
