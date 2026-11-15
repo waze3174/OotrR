@@ -96,6 +96,17 @@ def source_in_scope(entry, sources):
     return True
 
 
+# Zelda's Letter takes the pouch slot of the Weird Egg and the Cucco: found before
+# Talon is woken, it replaces them and Zelda can never be reached. It stays
+# Zelda's gift while the child trade quest is vanilla.
+CHILD_TRADE_LOCKED = ('HC Zeldas Letter',)
+
+
+def kept_for_child_trade(entry, options):
+    return (options.get('shuffle_child_trade', 'vanilla') == 'vanilla' and entry.get('source') == 'quest'
+            and entry.get('kind') == 'exact' and entry['ap'][0] in CHILD_TRADE_LOCKED)
+
+
 class DetRandom:
     def __init__(self, key):
         self.key = key.encode('utf-8') if isinstance(key, str) else key
@@ -229,6 +240,8 @@ def prepare(data, options, groups, enemies, seed_key, open_forest=True, progress
     def in_scope(entry):
         item = entry['vanilla']
         if entry['source'] != 'chest':
+            if kept_for_child_trade(entry, options):
+                return False
             return entry['kind'] != 'junk' or entry['reason'] in SAFE_JUNK
         if not options['shuffle_chests']:
             return False
