@@ -22,7 +22,7 @@ save has found:
 - a **console** for Archipelago seeds: the items you receive and send, other players' items, hints, chat and the server's
   notices, as a few lines over the game, written there by OotrR's Archipelago client.
 
-Version 0.6.0. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
+Version 0.6.1. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Controls
 
@@ -30,9 +30,9 @@ Version 0.6.0. 0.2.0's icons were seen in the game; the rest is **not yet tested
 |---|---|
 | R + right stick up | open the panel, or close it |
 | D-pad or left stick | move the highlight over the regions and the Settings entry after them; in a region's list, scroll (left and right: a page). Held, it repeats |
-| A | open the highlighted region's list of checks, the Settings page, the page of the entry chosen on it, or the console's Messages page |
+| A | open the highlighted region's list of checks, the Settings page or the page of the entry chosen on it; on the console's page, tick or untick the kind of message chosen |
 | B | back a page (a list and the Settings page: to the regions), or close the panel |
-| D-pad or left stick, on a settings page | up and down choose a setting, left and right change its value (on the Messages page, they or A tick or untick the kind chosen) |
+| D-pad or left stick, on a settings page | up and down choose a setting, left and right change its value (on a kind of message, they or A tick or untick it) |
 
 While the panel is open the game doesn't see R, the right stick (so the camera stays still), A, B, the D-pad or the left
 stick (Link stands still); while the combination is held, it doesn't see R or the right stick. A button still held when the
@@ -76,13 +76,18 @@ means the defaults. If the SD card can't be mounted, the settings last until the
 | Opacity | 25 %, 50 %, 75 %, 100 % | 75 % |
 | Lines | 4, 6, 8, 12 | 6 |
 | Fade | 5 s, 10 s, 30 s, Permanent | 10 s |
-| Messages | A opens a page of the kinds of message, each ticked or not: Items received, Items sent, Hints, Chat, Server notices, Other players' items | all ticked |
+| Items received | ticked or not: shown or not | ticked |
+| Items sent | ticked or not | ticked |
+| Hints | ticked or not | ticked |
+| Chat | ticked or not | ticked |
+| Server notices | ticked or not | ticked |
+| Other players' items | ticked or not | ticked |
 
 The console shows the newest lines of the kinds ticked, oldest at the top, each in its kind's colour (gold received, green sent, blue
 hints, white chat, grey notices, lavender other players' items: one player finding their own item, or sending one to a third); a
 long line wraps over up to three rows. A line fades out after the Fade time; Permanent keeps the last lines. It is drawn whether
 the panel is open or not, takes no input, and keeps clear of the postcard: next to it, narrower, or above or below it. While the
-console's pages are shown it is drawn whole as a preview ("No messages yet" before the first line).
+console's page is shown it is drawn whole as a preview, under the panel ("No messages yet" before the first line).
 Console is kept apart for local and Archipelago seeds, so turning it on for one leaves the other's default.
 
 Its lines come from OotrR's Archipelago client (the desktop application or `ap-client`), which finds the console's mailbox in
@@ -92,7 +97,7 @@ to ...", "Archipelago: not connected", or, after 10 s without the client's heart
 running". The game's font has ASCII and Latin-1 letters; other characters show as `?`. The console keeps the last 32 lines; lines
 sent while the game wasn't running aren't shown.
 
-The settings are saved in `ootrTracker/console.cfg` next to the postcard's, when the console's pages are left or the panel is closed.
+The settings are saved in `ootrTracker/console.cfg` next to the postcard's, when the console's page is left or the panel is closed.
 
 ## What it needs
 
@@ -153,7 +158,7 @@ GPL-3.0-or-later ([LICENSE](LICENSE)); this folder only, the rest of the reposit
   CONTRIBUTORS.md), itself based on **gz**, glankk's practice ROM for Ocarina of Time (N64). The game's memory layout
   (`builds.c`, `gamedata.c`) is what sloperinaGZ's group found.
 - The items' grid and the key labels follow the desktop tracker of the randomizer (`src/oot_rando/tracker/` in this repository, MIT).
-- The console's Messages page, a check box per kind, follows sloperinaGZ's watch list (`src/ootgz/menus.c`, master 5b44a21).
+- The console's kinds of message, a check box each, follow sloperinaGZ's watch list (`src/ootgz/menus.c`, master 5b44a21).
 - `src/third_party` (see its README) holds [stb_truetype](https://github.com/nothings/stb) (public domain) and zstd's educational decoder
   (BSD or GPLv2, Meta Platforms), both as sloperinaGZ ships them.
 - No game files are included. You need your own copy of the game; the module reads its font and shader from it at run time,

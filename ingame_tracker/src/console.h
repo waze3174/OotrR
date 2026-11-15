@@ -14,10 +14,11 @@ typedef enum { CONSOLE_BOTTOM, CONSOLE_TOP, CONSOLE_LEFT, CONSOLE_RIGHT, CONSOLE
 typedef enum {
   CONSOLE_RECEIVED, CONSOLE_SENT, CONSOLE_HINT, CONSOLE_CHAT, CONSOLE_SERVER, CONSOLE_OTHERS, CONSOLE_KIND_COUNT,
 } console_kind_t;
-/* the Console page's rows, in order; the last opens the Messages page */
+/* the Console page's rows, in order: the settings with a value, then a row per kind of message, ticked or not */
 typedef enum {
   CONSOLE_SETTING_SHOWN, CONSOLE_SETTING_POSITION, CONSOLE_SETTING_OPACITY, CONSOLE_SETTING_LINES,
-  CONSOLE_SETTING_FADE, CONSOLE_SETTING_MESSAGES, CONSOLE_SETTING_COUNT,
+  CONSOLE_SETTING_FADE, CONSOLE_SETTING_FIRST_KIND,
+  CONSOLE_SETTING_COUNT = CONSOLE_SETTING_FIRST_KIND + CONSOLE_KIND_COUNT,
 } console_setting_t;
 #define CONSOLE_STEPS     4  /* opacity, lines and fade each have four values */
 #define CONSOLE_MAX_LINES 12 /* the most lines it shows */
@@ -37,12 +38,16 @@ console_settings_t console_defaults(void);
 bool console_shown(const console_settings_t *settings, bool archipelago);
 bool console_kind_shown(const console_settings_t *settings, console_kind_t kind);
 /* Moves a setting of the Console page one value on (+1) or back (-1), round its values; On/Off is the one of
- * this kind of seed. The Messages row has no value of its own. */
+ * this kind of seed. A kind's row ticks or unticks it, either way. */
 void console_step(console_settings_t *settings, console_setting_t setting, int direction, bool archipelago);
 void console_toggle_kind(console_settings_t *settings, console_kind_t kind);
 
+/* A row's name: the setting's, or for a kind's row the kind's. */
 const char *console_setting_name(console_setting_t setting);
-/* A setting's value as the page shows it ("On", "Bottom centre", "75 %", "6", "10 s", "All", "3 of 6"). */
+bool console_setting_is_kind(console_setting_t setting);
+console_kind_t console_setting_kind(console_setting_t setting);
+/* A setting's value as the page shows it ("On", "Bottom centre", "75 %", "6", "10 s"); NULL for a kind's row,
+ * which the page shows as a tick box. */
 const char *console_value_text(const console_settings_t *settings, console_setting_t setting, bool archipelago);
 const char *console_kind_name(console_kind_t kind);
 

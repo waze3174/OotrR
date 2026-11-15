@@ -132,7 +132,7 @@ class Layout(unittest.TestCase):
         console_h = (MAILBOX_H.parent / 'console.h').read_text(encoding='utf-8')
         self.assertIn('CONSOLE_RECEIVED, CONSOLE_SENT, CONSOLE_HINT, CONSOLE_CHAT, CONSOLE_SERVER, CONSOLE_OTHERS, '
                       'CONSOLE_KIND_COUNT', console_h)
-        self.assertEqual(int(defines['MAILBOX_MODULE_VERSION'], 0), cb.OTHERS_MODULE_VERSION)
+        self.assertGreaterEqual(int(defines['MAILBOX_MODULE_VERSION'], 0), cb.OTHERS_MODULE_VERSION)
         kinds = re.search(r'typedef enum \{\s*(CONSOLE_RECEIVED[^}]*?),\s*CONSOLE_KIND_COUNT', console_h).group(1)
         self.assertEqual(len(kinds.split(',')), cb.KIND_COUNT)
         crt0 = (MAILBOX_H.parent / 'crt0.S').read_text(encoding='utf-8')

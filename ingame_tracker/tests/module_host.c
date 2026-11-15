@@ -802,7 +802,7 @@ static int test_buttons_held_at_closing_stay_hidden_until_let_go(void)
 static int test_the_highlight_moves_over_the_regions_columns(void)
 {
   /* 35 regions and the Settings entry (35) in 3 columns of 12: 0-11, 12-23, 24-35 */
-  browse_t b = { BROWSE_REGIONS, 0, 0, 0, 0, 0, 0 };
+  browse_t b = { BROWSE_REGIONS, 0, 0, 0, 0, 0 };
   CHECK(browse_region_rows(35) == 12 && browse_region_rows(36) == 13 && browse_region_rows(1) == 1);
   CHECK(browse_region_rows(0) == 1);
   browse_move(&b, NAV_UP, 35, 0);
@@ -841,7 +841,7 @@ static int test_the_highlight_moves_over_the_regions_columns(void)
 
 static int test_a_list_opens_scrolls_and_goes_back(void)
 {
-  browse_t b = { BROWSE_REGIONS, 4, 7, 3, 0, 0, 0 };
+  browse_t b = { BROWSE_REGIONS, 4, 7, 3, 0, 0 };
   browse_open(&b, 3);
   CHECK(b.view == BROWSE_REGIONS); /* the highlight is past the regions and the Settings entry */
   b.region = 2;
@@ -876,7 +876,7 @@ static int test_a_list_opens_scrolls_and_goes_back(void)
 
 static int test_the_settings_entry_opens_the_postcard_and_the_console(void)
 {
-  browse_t b = { BROWSE_REGIONS, 3, 7, 3, 1, 2, 3 };
+  browse_t b = { BROWSE_REGIONS, 3, 7, 3, 1, 2 };
   browse_open(&b, 3); /* the region count is the Settings entry */
   CHECK(b.view == BROWSE_SETTINGS && b.region == 3 && b.entry == SETTINGS_POSTCARD);
   CHECK(browse_page_rows(BROWSE_SETTINGS) == SETTINGS_ENTRY_COUNT && browse_page_row(&b) == 0);
@@ -907,15 +907,12 @@ static int test_the_settings_entry_opens_the_postcard_and_the_console(void)
   CHECK(b.view == BROWSE_CONSOLE && b.setting == 0 && browse_page_rows(BROWSE_CONSOLE) == CONSOLE_SETTING_COUNT);
   browse_open(&b, 3); /* A on a value: nothing */
   CHECK(b.view == BROWSE_CONSOLE);
-  for (int i = 0; i < CONSOLE_SETTING_COUNT; i++)
+  for (int i = 0; i < CONSOLE_SETTING_COUNT + 1; i++)
     browse_move(&b, NAV_DOWN, 3, 0);
-  CHECK(b.setting == CONSOLE_SETTING_MESSAGES);
-  browse_open(&b, 3);
-  CHECK(b.view == BROWSE_MESSAGES && b.message == 0 && browse_page_rows(BROWSE_MESSAGES) == CONSOLE_KIND_COUNT);
-  for (int i = 0; i < CONSOLE_KIND_COUNT + 1; i++)
-    browse_move(&b, NAV_DOWN, 3, 0);
-  CHECK(b.message == CONSOLE_KIND_COUNT - 1 && browse_page_row(&b) == CONSOLE_KIND_COUNT - 1);
-  CHECK(browse_back(&b) && b.view == BROWSE_CONSOLE && b.setting == CONSOLE_SETTING_MESSAGES); /* where it was */
+  CHECK(b.setting == CONSOLE_SETTING_COUNT - 1 && browse_page_row(&b) == CONSOLE_SETTING_COUNT - 1); /* the last kind */
+  CHECK(console_setting_kind((console_setting_t)b.setting) == CONSOLE_OTHERS);
+  browse_open(&b, 3); /* A on a kind ticks it in app.c; the page stays */
+  CHECK(b.view == BROWSE_CONSOLE && b.setting == CONSOLE_SETTING_COUNT - 1);
   CHECK(browse_back(&b) && b.view == BROWSE_SETTINGS && b.entry == SETTINGS_CONSOLE);
   CHECK(browse_page_rows(BROWSE_REGIONS) == 0 && browse_page_rows(BROWSE_CHECKS) == 0);
   return 0;
@@ -1090,14 +1087,21 @@ static int test_console_defaults_and_values(void)
   CHECK(!strcmp(console_value_text(&s, CONSOLE_SETTING_OPACITY, true), "75 %"));
   CHECK(!strcmp(console_value_text(&s, CONSOLE_SETTING_LINES, true), "6"));
   CHECK(!strcmp(console_value_text(&s, CONSOLE_SETTING_FADE, true), "10 s"));
-  CHECK(!strcmp(console_value_text(&s, CONSOLE_SETTING_MESSAGES, true), "All"));
   CHECK(!strcmp(console_setting_name(CONSOLE_SETTING_SHOWN), "Console"));
-  CHECK(!strcmp(console_setting_name(CONSOLE_SETTING_MESSAGES), "Messages"));
+  CHECK(!strcmp(console_setting_name(CONSOLE_SETTING_FADE), "Fade"));
   CHECK(!strcmp(console_setting_name(CONSOLE_SETTING_COUNT), ""));
+  CHECK(!console_setting_is_kind(CONSOLE_SETTING_FADE) && !console_setting_is_kind(CONSOLE_SETTING_COUNT));
+  CHECK(console_setting_kind(CONSOLE_SETTING_COUNT) == CONSOLE_KIND_COUNT);
+  /* the page's rows after Fade: one per kind, in the mailbox's order, with a tick box (no value) */
   const char *kinds[CONSOLE_KIND_COUNT] = { "Items received", "Items sent", "Hints", "Chat", "Server notices",
                                            "Other players' items" };
-  for (int kind = 0; kind < CONSOLE_KIND_COUNT; kind++)
+  CHECK(CONSOLE_SETTING_COUNT == CONSOLE_SETTING_FIRST_KIND + CONSOLE_KIND_COUNT && CONSOLE_SETTING_FIRST_KIND == 5);
+  for (int kind = 0; kind < CONSOLE_KIND_COUNT; kind++) {
+    console_setting_t row = (console_setting_t)(CONSOLE_SETTING_FIRST_KIND + kind);
+    CHECK(console_setting_is_kind(row) && console_setting_kind(row) == (console_kind_t)kind);
     CHECK(!strcmp(console_kind_name((console_kind_t)kind), kinds[kind]));
+    CHECK(!strcmp(console_setting_name(row), kinds[kind]) && console_value_text(&s, row, true) == 0);
+  }
   return 0;
 }
 
@@ -1130,19 +1134,18 @@ static int test_console_settings_cycle_and_each_kind_of_seed_has_its_own_switch(
   console_step(&s, CONSOLE_SETTING_OPACITY, 1, false);
   CHECK(console_opacity(&s) == 0.25f); /* 100 % wraps to 25 % */
   console_settings_t before = s;
-  console_step(&s, CONSOLE_SETTING_MESSAGES, 1, false); /* the Messages row has no value */
-  console_step(&s, CONSOLE_SETTING_COUNT, 1, false);
+  console_step(&s, CONSOLE_SETTING_COUNT, 1, false); /* past the rows: nothing */
   CHECK(!memcmp(&before, &s, sizeof(s)));
-  console_toggle_kind(&s, CONSOLE_CHAT);
-  console_toggle_kind(&s, CONSOLE_HINT);
+  /* a kind's row ticks or unticks it either way, and only it */
+  console_step(&s, (console_setting_t)(CONSOLE_SETTING_FIRST_KIND + CONSOLE_CHAT), 1, false);
+  console_step(&s, (console_setting_t)(CONSOLE_SETTING_FIRST_KIND + CONSOLE_HINT), -1, false);
   CHECK(!console_kind_shown(&s, CONSOLE_CHAT) && !console_kind_shown(&s, CONSOLE_HINT));
-  CHECK(console_kind_shown(&s, CONSOLE_RECEIVED) && !strcmp(console_value_text(&s, CONSOLE_SETTING_MESSAGES, 0), "4 of 6"));
-  console_toggle_kind(&s, CONSOLE_CHAT);
+  CHECK(console_kind_shown(&s, CONSOLE_RECEIVED) && console_kind_shown(&s, CONSOLE_OTHERS));
+  CHECK(s.position == before.position && s.opacity == before.opacity && s.shown[0] == before.shown[0]);
+  console_step(&s, (console_setting_t)(CONSOLE_SETTING_FIRST_KIND + CONSOLE_CHAT), -1, false);
   CHECK(console_kind_shown(&s, CONSOLE_CHAT));
-  for (int kind = 0; kind < CONSOLE_KIND_COUNT; kind++)
-    if (console_kind_shown(&s, (console_kind_t)kind))
-      console_toggle_kind(&s, (console_kind_t)kind);
-  CHECK(!strcmp(console_value_text(&s, CONSOLE_SETTING_MESSAGES, 0), "None"));
+  console_step(&s, (console_setting_t)(CONSOLE_SETTING_FIRST_KIND + CONSOLE_OTHERS), 1, false);
+  CHECK(!console_kind_shown(&s, CONSOLE_OTHERS) && console_kind_shown(&s, CONSOLE_SERVER));
   return 0;
 }
 
@@ -1204,7 +1207,7 @@ static int test_console_file_of_0_5_0_shows_other_players_items(void)
                                       "fade=10\nreceived=1\nsent=0\nhints=1\nchat=0\nserver=1\n");
   CHECK(console_kind_shown(&s, CONSOLE_OTHERS) && console_kind_shown(&s, CONSOLE_SERVER));
   CHECK(!console_kind_shown(&s, CONSOLE_SENT) && !console_kind_shown(&s, CONSOLE_CHAT));
-  CHECK(!strcmp(console_value_text(&s, CONSOLE_SETTING_MESSAGES, true), "4 of 6"));
+  CHECK(console_kind_shown(&s, CONSOLE_RECEIVED) && console_kind_shown(&s, CONSOLE_HINT));
   s = console_read("version=1\nothers=0\n");
   CHECK(!console_kind_shown(&s, CONSOLE_OTHERS) && console_kind_shown(&s, CONSOLE_SERVER));
   return 0;

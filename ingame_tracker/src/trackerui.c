@@ -55,8 +55,7 @@
 #define HINT_REGIONS     "D-pad: choose     A: open     B: close"
 #define HINT_SETTINGS    "Up / down: choose     A: open     B: back"
 #define HINT_POSTCARD    "Up / down: choose     Left / right: change     B: back"
-#define HINT_CONSOLE     "Up / down: choose     Left / right: change     A: messages     B: back"
-#define HINT_MESSAGES    "Up / down: choose     A or left / right: on or off     B: back"
+#define HINT_CONSOLE     "Up / down: choose     Left / right or A: change     B: back"
 #define SETTINGS_TITLE   "Settings"
 #define NO_MESSAGES      "No messages yet"
 #define CONSOLE_WRAP_ROWS 3 /* a console line takes at most this many rows; the rest is cut */
@@ -492,8 +491,8 @@ static float draw_regions(const layout_t *l, const panel_t *panel, int rows, flo
 
 /* --- the settings pages ------------------------------------------------------------------------- */
 
-/* The Messages page is a list of the console's kinds of message, each with a check box that shows or hides it,
- * as sloperinaGZ's watch list has a check box per watch for its on-screen box (src/ootgz/menus.c, "watches: the
+/* The Console page's rows after Fade are the console's kinds of message, each with a check box that shows or hides
+ * it, as sloperinaGZ's watch list has a check box per watch for its on-screen box (src/ootgz/menus.c, "watches: the
  * list", GPL-3, master 5b44a21). */
 
 typedef struct {
@@ -512,31 +511,31 @@ static setting_row_t settings_entry(const panel_t *panel, settings_entry_t entry
                           console_value_text(&panel->console, CONSOLE_SETTING_SHOWN, panel->archipelago), false, false };
 }
 
-_Static_assert((int)CONSOLE_KIND_COUNT <= (int)CONSOLE_SETTING_COUNT, "the Messages page's rows fit the settings pages' array");
+#define PAGE_ROWS CONSOLE_SETTING_COUNT /* the longest settings page */
+_Static_assert((int)SETTINGS_ENTRY_COUNT <= PAGE_ROWS && (int)POSTCARD_SETTING_COUNT <= PAGE_ROWS,
+               "every settings page's rows fit PAGE_ROWS");
 
 /* the rows of the settings page shown, and its title; returns how many */
-static uint32_t page_rows(const panel_t *panel, setting_row_t rows[CONSOLE_SETTING_COUNT], const char **title)
+static uint32_t page_rows(const panel_t *panel, setting_row_t rows[PAGE_ROWS], const char **title)
 {
   const console_settings_t *console = &panel->console;
   browse_view_t view = panel->browse.view;
   uint32_t count = browse_page_rows(view);
   *title = view == BROWSE_SETTINGS ? SETTINGS_TITLE
            : view == BROWSE_POSTCARD ? postcard_setting_name(POSTCARD_SETTING_SHOWN)
-           : view == BROWSE_CONSOLE ? console_setting_name(CONSOLE_SETTING_SHOWN)
-           : console_setting_name(CONSOLE_SETTING_MESSAGES);
+           : console_setting_name(CONSOLE_SETTING_SHOWN);
   for (uint32_t i = 0; i < count; i++) {
     if (view == BROWSE_SETTINGS)
       rows[i] = settings_entry(panel, (settings_entry_t)i);
     else if (view == BROWSE_POSTCARD)
       rows[i] = (setting_row_t){ postcard_setting_name((postcard_setting_t)i),
                                  postcard_value_text(&panel->postcard, (postcard_setting_t)i), false, true };
-    else if (view == BROWSE_CONSOLE)
-      rows[i] = (setting_row_t){ console_setting_name((console_setting_t)i),
-                                 console_value_text(console, (console_setting_t)i, panel->archipelago), false,
-                                 i != CONSOLE_SETTING_MESSAGES };
+    else if (console_setting_is_kind((console_setting_t)i))
+      rows[i] = (setting_row_t){ console_setting_name((console_setting_t)i), 0,
+                                 console_kind_shown(console, console_setting_kind((console_setting_t)i)), false };
     else
-      rows[i] = (setting_row_t){ console_kind_name((console_kind_t)i), 0, console_kind_shown(console, (console_kind_t)i),
-                                 false };
+      rows[i] = (setting_row_t){ console_setting_name((console_setting_t)i),
+                                 console_value_text(console, (console_setting_t)i, panel->archipelago), false, true };
   }
   return count;
 }
@@ -545,7 +544,7 @@ static void draw_tick_box(const layout_t *l, gd_flag_t flag, float x, float y, f
 
 static float draw_settings_page(const layout_t *l, const panel_t *panel, float y)
 {
-  setting_row_t rows[CONSOLE_SETTING_COUNT];
+  setting_row_t rows[PAGE_ROWS];
   const char *title = "";
   uint32_t count = page_rows(panel, rows, &title), highlighted = browse_page_row(&panel->browse);
   float head = LIST_HEAD_ROW_FP * l->fp, row = SETTING_ROW_FP * l->fp;
@@ -574,7 +573,6 @@ static const char *page_hint(browse_view_t view)
   switch (view) {
     case BROWSE_SETTINGS: return HINT_SETTINGS;
     case BROWSE_CONSOLE: return HINT_CONSOLE;
-    case BROWSE_MESSAGES: return HINT_MESSAGES;
     default: return HINT_POSTCARD;
   }
 }
@@ -791,26 +789,24 @@ static void draw_console(const console_view_t *view, nvn_rect_t area, const box_
 
 /* --- a frame ---------------------------------------------------------------------------------------- */
 
-static bool console_page(browse_view_t view)
-{
-  return view == BROWSE_CONSOLE || view == BROWSE_MESSAGES;
-}
-
 /* The panel when it is open; the postcard when it is on, with the panel closed or showing the postcard's
  * settings (the card then shows what they do); the console when it is on, with the panel closed or showing the
- * console's settings (every line at full strength, clear of where the card is once the panel closes). */
+ * console's settings (every line at full strength, clear of where the card is once the panel closes, and under the
+ * panel, whose rows it would hide). */
 static void draw_frame(const panel_t *panel, const console_view_t *console, nvn_rect_t area, uint64_t now)
 {
-  if (panel->menu)
-    draw_panel(panel, area);
   bool card_on = panel->mode == PANEL_TRACKING && panel->postcard.shown;
   box_t card = card_on ? sizes_card_box(&panel->postcard, panel->state.key_count, area.w / picture_fp(area))
                        : (box_t){ 0, 0, 0, 0 };
+  bool preview = panel->menu && panel->browse.view == BROWSE_CONSOLE;
+  if (console->shown && preview)
+    draw_console(console, area, card_on ? &card : 0, now, true);
+  if (panel->menu)
+    draw_panel(panel, area);
   if (card_on && (!panel->menu || panel->browse.view == BROWSE_POSTCARD))
     draw_postcard(panel, &card, area);
-  bool preview = panel->menu && console_page(panel->browse.view);
-  if (console->shown && (preview || (!panel->menu && console_view_showing(console, now))))
-    draw_console(console, area, card_on ? &card : 0, now, preview);
+  if (console->shown && !panel->menu && console_view_showing(console, now))
+    draw_console(console, area, card_on ? &card : 0, now, false);
 }
 
 bool trackerui_record(nvn_obj_t *cmd, int slot, nvn_texture_t *texture, const nvn_texture_info_t *info,

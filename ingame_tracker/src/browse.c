@@ -17,7 +17,6 @@ uint32_t browse_page_rows(browse_view_t view)
     case BROWSE_SETTINGS: return SETTINGS_ENTRY_COUNT;
     case BROWSE_POSTCARD: return POSTCARD_SETTING_COUNT;
     case BROWSE_CONSOLE: return CONSOLE_SETTING_COUNT;
-    case BROWSE_MESSAGES: return CONSOLE_KIND_COUNT;
     default: return 0;
   }
 }
@@ -27,7 +26,6 @@ static uint32_t *page_row(browse_t *browse)
 {
   switch (browse->view) {
     case BROWSE_SETTINGS: return &browse->entry;
-    case BROWSE_MESSAGES: return &browse->message;
     default: return &browse->setting;
   }
 }
@@ -120,12 +118,6 @@ void browse_open(browse_t *browse, uint32_t region_count)
       browse->view = browse->entry == SETTINGS_CONSOLE ? BROWSE_CONSOLE : BROWSE_POSTCARD;
       browse->setting = 0;
       return;
-    case BROWSE_CONSOLE:
-      if (browse->setting == CONSOLE_SETTING_MESSAGES) {
-        browse->view = BROWSE_MESSAGES;
-        browse->message = 0;
-      }
-      return;
     default:
       return;
   }
@@ -137,7 +129,6 @@ bool browse_back(browse_t *browse)
     case BROWSE_REGIONS: return false;
     case BROWSE_POSTCARD:
     case BROWSE_CONSOLE: browse->view = BROWSE_SETTINGS; return true;
-    case BROWSE_MESSAGES: browse->view = BROWSE_CONSOLE; return true;
     default: browse->view = BROWSE_REGIONS; return true;
   }
 }

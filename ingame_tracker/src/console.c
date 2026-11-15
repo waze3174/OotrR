@@ -10,9 +10,9 @@
 #define MS_PER_SECOND    1000u
 #define PERCENT_FULL     100.0f
 
-static const char *const setting_names[CONSOLE_SETTING_COUNT] = {
+static const char *const setting_names[CONSOLE_SETTING_FIRST_KIND] = {
   [CONSOLE_SETTING_SHOWN] = "Console", [CONSOLE_SETTING_POSITION] = "Position", [CONSOLE_SETTING_OPACITY] = "Opacity",
-  [CONSOLE_SETTING_LINES] = "Lines", [CONSOLE_SETTING_FADE] = "Fade", [CONSOLE_SETTING_MESSAGES] = "Messages",
+  [CONSOLE_SETTING_LINES] = "Lines", [CONSOLE_SETTING_FADE] = "Fade",
 };
 static const char *const position_texts[CONSOLE_POSITION_COUNT] = {
   [CONSOLE_BOTTOM] = "Bottom centre", [CONSOLE_TOP] = "Top centre", [CONSOLE_LEFT] = "Left centre",
@@ -28,10 +28,6 @@ static const uint8_t line_counts[CONSOLE_STEPS] = { 4, 6, 8, CONSOLE_MAX_LINES }
 static const char *const line_texts[CONSOLE_STEPS] = { "4", "6", "8", "12" };
 static const uint8_t fade_seconds[CONSOLE_STEPS] = { 5, 10, 30, 0 }; /* 0: permanent */
 static const char *const fade_texts[CONSOLE_STEPS] = { "5 s", "10 s", "30 s", "Permanent" };
-static const char *const kinds_texts[CONSOLE_KIND_COUNT + 1] = {
-  "None", "1 of 6", "2 of 6", "3 of 6", "4 of 6", "5 of 6", "All",
-};
-_Static_assert(CONSOLE_KIND_COUNT == 6, "kinds_texts counts out of six");
 
 /* the file's names: its version, the settings, then a line per kind */
 enum {
@@ -74,7 +70,10 @@ void console_step(console_settings_t *settings, console_setting_t setting, int d
     case CONSOLE_SETTING_OPACITY: settings->opacity = step_in_ring(settings->opacity, direction, CONSOLE_STEPS); break;
     case CONSOLE_SETTING_LINES: settings->lines = step_in_ring(settings->lines, direction, CONSOLE_STEPS); break;
     case CONSOLE_SETTING_FADE: settings->fade = step_in_ring(settings->fade, direction, CONSOLE_STEPS); break;
-    default: break;
+    default:
+      if (console_setting_is_kind(setting))
+        console_toggle_kind(settings, console_setting_kind(setting));
+      break;
   }
 }
 
@@ -84,17 +83,21 @@ void console_toggle_kind(console_settings_t *settings, console_kind_t kind)
     settings->kinds ^= (uint8_t)(1u << kind);
 }
 
-const char *console_setting_name(console_setting_t setting)
+bool console_setting_is_kind(console_setting_t setting)
 {
-  return setting < CONSOLE_SETTING_COUNT ? setting_names[setting] : "";
+  return setting >= CONSOLE_SETTING_FIRST_KIND && setting < CONSOLE_SETTING_COUNT;
 }
 
-static int kinds_shown(const console_settings_t *settings)
+console_kind_t console_setting_kind(console_setting_t setting)
 {
-  int count = 0;
-  for (int kind = 0; kind < CONSOLE_KIND_COUNT; kind++)
-    count += console_kind_shown(settings, (console_kind_t)kind);
-  return count;
+  return console_setting_is_kind(setting) ? (console_kind_t)(setting - CONSOLE_SETTING_FIRST_KIND) : CONSOLE_KIND_COUNT;
+}
+
+const char *console_setting_name(console_setting_t setting)
+{
+  if (console_setting_is_kind(setting))
+    return console_kind_name(console_setting_kind(setting));
+  return setting < CONSOLE_SETTING_FIRST_KIND ? setting_names[setting] : "";
 }
 
 const char *console_value_text(const console_settings_t *settings, console_setting_t setting, bool archipelago)
@@ -105,8 +108,7 @@ const char *console_value_text(const console_settings_t *settings, console_setti
     case CONSOLE_SETTING_OPACITY: return opacity_texts[settings->opacity % CONSOLE_STEPS];
     case CONSOLE_SETTING_LINES: return line_texts[settings->lines % CONSOLE_STEPS];
     case CONSOLE_SETTING_FADE: return fade_texts[settings->fade % CONSOLE_STEPS];
-    case CONSOLE_SETTING_MESSAGES: return kinds_texts[kinds_shown(settings)];
-    default: return "";
+    default: return console_setting_is_kind(setting) ? 0 : "";
   }
 }
 
