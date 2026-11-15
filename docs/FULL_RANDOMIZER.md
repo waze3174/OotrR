@@ -116,12 +116,13 @@ on the token. The token's AI keeps it standing where it spawns
 (`ExecuteKeepStandingPosture`), so an item shaken from a tree or out of a pot thrown at
 a wall hung in the air. Native drops share `Obj_Item_Base`'s `DropItem` AI
 (`ExecuteDropBound`: fall, bounce, land), physics, blackboard and death.
-Each such pickup runs its own clone of that AI: when it spawns, it reads its check flag
-and deletes itself once the check is collected, so a source that respawns while the
-area stays loaded (a pot or rock when Link looks away) gives the item only once. The
-vanilla copy of the source takes over on the next area load. That copy has a new hash but
-keeps the original's `Phive.Placement.ID`: the area's static compound knows every source
-by that ID, and a tree (`IsAcquireOriginalSystemGroupId`) with an unknown one is not solid.
+The source itself keeps its map entry, but for its drop: no `Presence` and no vanilla
+copy. The game remembers a broken pot, rock, crate, bush or beehive by its hash (a
+`Bool64bitKey`) until the scene changes; a copy under another hash, or a source under a
+`Presence` condition, came back while the area stayed loaded. Each pickup runs its own
+clone of the `DropItem` AI: when it spawns, it reads its check flag and deletes itself
+once the check is collected. A collected source therefore drops nothing afterwards
+(not its vanilla rupee or heart).
 
 ## Dungeon-specific keys (`key_adapter.py`)
 

@@ -1,14 +1,11 @@
 """First-collection rewards for repeatable physical sources.
 
 Generated pickups retain the real item's PouchActor. Their private event AINB
-sets a saved check flag only after the native add-to-pouch action. Complementary
-Presence conditions select the randomized source before that flag and a clone
-of the untouched vanilla source afterwards. Gameplay validation remains required.
-
-A source respawns while the area stays loaded (a pot or rock when Link looks
-away) and drops its pickup again before the vanilla copy can take over: each
-pickup's own AI (a clone of the native ``DropItem`` one) checks the flag when it
-spawns and deletes itself once the check is collected.
+sets a saved check flag only after the native add-to-pouch action. The source
+itself is left as in the game, but for its drop, so it breaks and respawns like
+the vanilla one (on a scene change). Once the check is collected, the pickup it
+drops deletes itself when it spawns: its own AI (a clone of the native
+``DropItem`` one) checks the flag. Gameplay validation remains required.
 
 Shop shelves holding a shuffled item (``Shop_Rando_*``) are bought once the same
 way: each gets its own actor whose shop AI writes the check flag when the item is
@@ -44,11 +41,6 @@ MINOR_PREFIXES = ('TBox_Rupee_', 'TBox_ArrowBundle_', 'TBox_DekuNutBundle', 'TBo
 MINOR_ACTORS = frozenset(('Obj_Heart',))   # recovery heart (not a piece nor a container)
 SHOP_ONCE_PREFIX = 'Shop_RandoOnce_'
 SHOP_AI_MEMBER = 'AI/Shop_Item_Base.root.ainb'
-# Presence of the shuffled source and of its vanilla copy, checked lazily (on area
-# load, as the game removes its Tektites once the Goron ruby is got): the vanilla
-# copy no longer appears the moment the check is collected (a pot respawned at
-# once), only when the area is loaded again.
-PRESENCE_LAZY = True
 
 
 def is_minor_reward(canonical):
@@ -427,17 +419,14 @@ def prepare_repeatables(plan, maps):
                 raise ValueError('Repeatable source without a proven physical actor.')
             resource, index = patch['resource'], patch['path'][1]
             original = maps[resource]['root']['Actors'][index]
-            # An existing Presence cannot be overwritten by a new condition.
-            # The only currently supported special case is a native one-shot
-            # jar, already removed by its own persistent IsCrushed condition.
+            # Sources under a condition of their own stay vanilla, but for a native
+            # one-shot jar, removed by its own persistent IsCrushed condition.
             presence = original.get('Presence')
             native_once = bool(presence and presence.get('IsNegation') is True
                                and presence.get('FlagName', '').endswith('_IsCrushed'))
             if presence and not native_once:
                 raise ValueError('Conditional presence cannot be combined for ' + placement['id'])
-            fallback_hash = int.from_bytes(hashlib.sha256((placement['id'] + '/vanilla-source').encode()).digest()[:8], 'little')
-            variants.append({'resource': resource, 'index': index, 'native_once': native_once,
-                             'original_hash': int(original['Hash']), 'fallback_hash': fallback_hash})
+            variants.append({'resource': resource, 'index': index, 'native_once': native_once})
         record = {'id': placement['id'], 'actor': actor, 'canonical': canonical, 'kind': 'shop' if shop else 'pickup',
                   'original_reward_actor': previous, 'flag': flag, 'flag_hash': murmur3(flag),
                   'event_filename': 'RandoOnce_' + key + '.event.root', 'variants': variants}
@@ -642,46 +631,14 @@ def limit_shop_stock(pack_raw, slots):
 
 
 def patch_repeatable_sources(records, maps, raw_maps):
-    """Select first/randomized and subsequent/vanilla sources with saved flags.
+    """Add the sold out boards of shuffled shelves. Returns the changed maps.
 
-    Call AFTER normal map reward patches. The original actor and its links/hash
-    remain the first source. The fallback is a full copy of vanilla data,
-    including absence of an explicit drop and native drop-table settings, under a
-    new hash but with the original's physics placement ID.
+    Shuffled pots, rocks and other sources keep their map entry as it is, but for
+    their drop: no Presence and no vanilla copy. The game remembers a broken source
+    by its hash (its Bool64bitKey) until the scene changes; a copy under another
+    hash, or a source under a Presence condition, came back while the area stayed loaded.
     """
-    documents, originals, seen = {}, {}, set()
-    for record in records:
-        for variant in record['variants']:
-            resource, index = variant['resource'], variant['index']
-            if (resource, index) in seen:
-                continue
-            seen.add((resource, index))
-            if resource not in documents:
-                documents[resource] = byml_codec.load(raw_maps.get(resource, maps[resource]['raw']))
-                originals[resource] = byml_codec.load(maps[resource]['raw'])['root']['Actors']
-            actors = documents[resource]['root']['Actors']
-            first = actors[index]
-            original = originals[resource][index]
-            if variant['native_once']:
-                continue
-            if first.get('Presence') or original.get('Presence'):
-                raise ValueError('Presence already modified on a repeatable source.')
-            first['Presence'] = {'FlagName': record['flag'], 'IsNegation': True, 'IsCheckLazy': PRESENCE_LAZY}
-            fallback = copy.deepcopy(original)
-            used = {int(actor['Hash']) for actor in actors if 'Hash' in actor}
-            ident = variant['fallback_hash']
-            if ident in used:
-                raise ValueError('Source hash collision for the return to the original loot.')
-            fallback['Hash'] = byml_codec.U64(ident)
-            for link in fallback.get('Links', []):
-                for key in ('Src', 'Dst'):
-                    if link.get(key) == original['Hash']:
-                        link[key] = byml_codec.U64(ident)
-            # Phive.Placement.ID stays the original's: the area's static compound knows
-            # every source by that ID, and a tree (IsAcquireOriginalSystemGroupId) whose
-            # ID it does not know is not solid. Presence never loads both at once.
-            fallback['Presence'] = {'FlagName': record['flag'], 'IsNegation': False, 'IsCheckLazy': PRESENCE_LAZY}
-            actors.append(fallback)
+    documents = {}
     for record in records:
         for shelf in record.get('shelves', []):
             resource = shelf['resource']
@@ -695,15 +652,12 @@ def patch_repeatable_sources(records, maps, raw_maps):
 
 
 def register_repeatable_flags(raw, records):
-    """Add saved collection flags and registered fallback actor keys.
+    """Add the saved collection flag of each record (an 8-byte typed Bool).
 
-    Bool64bitKey is one shared sparse set of true uint64 keys in progress.sav:
-    each additional possible key reserves 8 payload bytes, with no new typed
-    hash/value-table record. Ordinary Bool reserves an 8-byte typed record.
     Returns (raw_GameData, summary). No names or rewards are stored in saves.
     """
     if not records:
-        return raw, {'bools': [], 'bool64': [], 'saved_bytes_added': 0}
+        return raw, {'bools': [], 'saved_bytes_added': 0}
     document = byml_codec.load(raw)
     data, meta = document['root']['Data'], document['root']['MetaData']
     previous_saved_size = meta['AllDataSaveSize']
@@ -712,8 +666,7 @@ def register_repeatable_flags(raw, records):
                           and e.get('ResetTypeValue') == 8 and e.get('DefaultValue') is False), None)
     if bool_template is None:
         raise ValueError('Saved collection flag template missing.')
-    key_templates = {int(e['Hash']): e for e in data['Bool64bitKey']}
-    added_bool, added_key = [], []
+    added_bool = []
     for record in records:
         value = int(record['flag_hash'])
         if value != murmur3(record['flag']) or value in known:
@@ -728,25 +681,5 @@ def register_repeatable_flags(raw, records):
         meta['AllDataSaveSize'] += 8
         meta['AllDataSaveOffset'] += 8
         added_bool.append(value)
-        for variant in record['variants']:
-            if variant['native_once']:
-                continue
-            original = key_templates.get(variant['original_hash'])
-            if original is None:
-                continue
-            key = int(variant['fallback_hash'])
-            if key in added_key:
-                continue
-            if key in known:
-                raise ValueError('Source key collision for the return to the original loot.')
-            entry = copy.deepcopy(original)
-            entry['Hash'] = byml_codec.U64(key)
-            data['Bool64bitKey'].append(entry)
-            known.add(key)
-            index = entry.get('SaveFileIndex', -1)
-            if index >= 0:
-                meta['SaveDataSize'][index] += 8
-                meta['AllDataSaveSize'] += 8
-            added_key.append(key)
-    return byml_codec.dump(document), {'bools': added_bool, 'bool64': added_key,
+    return byml_codec.dump(document), {'bools': added_bool,
                                        'saved_bytes_added': meta['AllDataSaveSize'] - previous_saved_size}

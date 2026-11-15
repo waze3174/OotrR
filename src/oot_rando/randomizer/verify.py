@@ -128,7 +128,8 @@ def verify(nup_path, seed_dir):
     repeat_first, repeat_fallback = defaultdict(dict), defaultdict(list)
     for record in tracking.get('repeatables', []):
         for variant in record['variants']:
-            if not variant['native_once']:
+            # Seeds made before sources were left as they are: Presence and a vanilla copy.
+            if not variant['native_once'] and 'fallback_hash' in variant:
                 repeat_first[variant['resource']][variant['index']] = record
                 repeat_fallback[variant['resource']].append((record, variant))
     repeat_boards = defaultdict(list)
@@ -366,7 +367,8 @@ def verify(nup_path, seed_dir):
                     for key in ('Src', 'Dst'):
                         if link.get(key) == original['Hash']:
                             link[key] = ident
-                # Phive.Placement.ID stays the original's (static compound entry).
+                if isinstance(fallback.get('Phive', {}).get('Placement'), dict):
+                    fallback['Phive']['Placement']['ID'] = ident
                 fallback['Presence'] = {'FlagName': record['flag'], 'IsNegation': False, 'IsCheckLazy': None}
                 expected_fallbacks[ident] = fallback
             actual_fallbacks = {a['Hash']: a for a in after['Actors'] if a.get('Hash') in expected_fallbacks}
