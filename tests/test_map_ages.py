@@ -15,8 +15,9 @@ VILLAGE = [6.0, 110.0, 21.0]          # Kokiri Forest, next to Link's house
 KF_CHILD, KF_ADULT, KF_BOTH = 'KokiriForest#rocks#1', 'KokiriForest#rocks#2', 'KokiriForest#rocks#3'
 HF_CHILD, HF_ADULT = 'HyruleField#rocks#4', 'HyruleField#rocks#5'
 # The Door of Time opens with the Song of Time, which (with the Ocarina of Time) the child
-# gets in Hyrule Field for the three spiritual stones: vanilla songs and ocarinas.
-STONES = {'Kokiri Emerald': 1, 'Goron Ruby': 1, 'Zora Sapphire': 1}
+# gets in Hyrule Field for the Goron Ruby and the Zora Sapphire (the remake's escape never
+# checks the Kokiri Emerald): vanilla songs and ocarinas.
+STONES = {'Goron Ruby': 1, 'Zora Sapphire': 1}
 # Remake: the Door of Time also waits for Zelda (DoorOfTime starts after her).
 DOOR_EVENTS = {'Met Zelda': 1}
 

@@ -488,7 +488,7 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             raw_maps[story_fixes.ZORA_RIVER_MAP] = patch_strings(river, wall_edits)
             story['zora_river_wall'] = {'map': story_fixes.ZORA_RIVER_MAP, 'actors': wall_actors,
                                         'presence': story_fixes.ZORA_RIVER_WALL_PRESENCE}
-            # Zelda's escape on the three stones, checked at every item get.
+            # Zelda's escape on the Goron Ruby and the Zora Sapphire, checked at every item get.
             extra_raw[ACTION_GUIDE_FLOW], story['zelda_escape_item_get'] = story_fixes.zelda_escape_on_item_get(
                 extra_raw[ACTION_GUIDE_FLOW])
             # The clock runs before Zelda (Impa's send-off flag set at the start).

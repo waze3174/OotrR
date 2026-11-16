@@ -438,14 +438,17 @@ def zora_river_wall_edits(root):
     return edits, sorted(found.values())
 
 
-# --- Zelda's escape (DoorOfTime) on the three stones ---------------------------
+# --- Zelda's escape (DoorOfTime) on the Goron Ruby and the Zora Sapphire --------
 # ``DoorOfTime/DoorOfTime_CheckStoneNum`` runs only at the end of Dodongo's Cavern and
 # Jabu-Jabu's Belly and reads both dungeon *quests*: with the stones found elsewhere,
 # Zelda never fled (15/11, Discord report). Its Step03 branch moves DoorOfTime to
 # ``Step03``, raises the Hyrule Field drawbridge (``IsHyruleFieldBridgeClose``) and
 # sets ``DoorOfTime_GetStoneCount`` to 0; the drawbridge area then starts
 # ``HyruleField_DoorOfTime_Escape`` (Step04), then the moat ``..._GetOcarinaOfTime``.
-# The same branch now also runs on the three stones held, checked at every item get
+# It reads only ``Get_StoneOfFire`` and ``Get_StoneOfWater`` (both done: Step03, one:
+# Step2_1 or Step2_2, none: 2 stones left); the Kokiri Emerald and the Deku Tree are
+# never checked, so the escape asks for the Goron Ruby and the Zora Sapphire only.
+# The same branch now also runs on those two stones held, checked at every item get
 # (``ActionGuide/ActionGuide``), at the end of Impa's send-off and at every dungeon end
 # (before the native check), once DoorOfTime is past ``Step01`` (send-off done) and not
 # past ``Step2_2`` (before Step03; ``IsAfter`` is strict, as Darunia's vanilla gift
@@ -463,7 +466,7 @@ def zora_river_wall_edits(root):
 # both are now skipped once DoorOfTime is past ``Step2_1`` (:func:`door_of_time_forward`).
 DOOR_FLOW = 'Event/EventFlow/DoorOfTime.bfevfl.zs'
 ACTION_GUIDE_FLOW = 'Event/EventFlow/ActionGuide.bfevfl.zs'
-STONES = ('Item_Stone_Forest', 'Item_Stone_Fire', 'Item_Stone_Water')
+STONES = ('Item_Stone_Fire', 'Item_Stone_Water')   # the native check's two quests
 STONE_FLAG_PREFIX = 'IsGet.'   # saved when the stone is obtained, however it is given
 DOOR_STARTED = 'DoorOfTime_IsAfter_Step01_Exp'
 DOOR_BEFORE_ESCAPE = 'DoorOfTime_IsAfter_Step2_2_Exp'

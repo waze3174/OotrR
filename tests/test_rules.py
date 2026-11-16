@@ -52,15 +52,28 @@ class LogicTests(unittest.TestCase):
                       dict(self.logic.location_rules)['Kak Anju as Adult'][0][1](Night, {}, 'adult'))
 
     def test_song_of_time_and_door_wait_for_zelda_and_stones(self):
-        # Zelda's escape and the Door of Time (DoorOfTime) follow Zelda and the
-        # three stones (the game checks the stones held: patching/story_fixes.py).
-        for location in ('Song from Ocarina of Time', 'Master Sword Pedestal'):
+        # Zelda's escape and the Door of Time (DoorOfTime) follow Zelda, the Goron Ruby
+        # and the Zora Sapphire (the game checks those stones held: patching/story_fixes.py).
+        for location in ('HF Ocarina of Time Item', 'Song from Ocarina of Time', 'Master Sword Pedestal'):
             rule = self.data.remake['location_rules'][location]
             self.assertIn("'Met Zelda'", rule, location)
-            self.assertIn('has_all_stones', rule, location)
+            self.assertIn('Goron_Ruby and Zora_Sapphire', rule, location)
+            self.assertNotIn('Kokiri_Emerald', rule, location)
+            self.assertNotIn('has_all_stones', rule, location)
             self.assertNotIn('Clear', rule, location)
         self.assertNotIn('Master Sword Pedestal', self.reachable(
             {'Master Sword Pedestal': None}, {'Ocarina': 1, 'Song of Time': 1}))
+
+    def test_zelda_escape_without_kokiri_emerald(self):
+        # The native check (DoorOfTime_CheckStoneNum) reads the Fire and Water quests only.
+        escape = {'HF Ocarina of Time Item': None, 'Song from Ocarina of Time': None}
+        found = self.reachable(escape, {'Goron Ruby': 1, 'Zora Sapphire': 1, 'Met Zelda': 1})
+        self.assertTrue(set(escape) <= found)
+        for missing in ('Goron Ruby', 'Zora Sapphire'):
+            with self.subTest(missing=missing):
+                counts = {'Goron Ruby': 1, 'Zora Sapphire': 1, 'Kokiri Emerald': 1, 'Met Zelda': 1}
+                del counts[missing]
+                self.assertFalse(set(escape) & self.reachable(escape, counts))
 
     def test_remake_events_compiled(self):
         events = {e for r in self.logic.regions.values() for e, _ in r['events']}

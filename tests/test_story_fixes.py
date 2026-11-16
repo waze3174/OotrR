@@ -191,7 +191,7 @@ class GameFlows(unittest.TestCase):
             self.assertEqual(params['Index'], -1)
             held.append(params['GameDataName'].removeprefix(s.STONE_FLAG_PREFIX))
             check = check.data.cases[0].v
-        self.assertEqual(held, list(s.STONES))
+        self.assertEqual(held, ['Item_Stone_Fire', 'Item_Stone_Water'])   # no Kokiri Emerald
         native_step03 = self.chart(self.read(s.DOOR_FLOW))['Event37'].data.params.data
         self.assertEqual(check.data.params.data, native_step03)       # the native request, IsWaitEnd too
         bridge = check.data.nxt.v
@@ -215,6 +215,12 @@ class GameFlows(unittest.TestCase):
             check = check.data.cases[0].v
         self.assertEqual(check.data.params.data, events['Event37'].data.params.data)
         self.assertIsNone(events['RandoDungeonEndStonesCount'].data.nxt.v)  # Step03: native skipped
+        # The native check reaches Step03 (Event37) on the Fire and Water quests alone.
+        native, read = events['Event38'], []
+        while native.name != 'Event37':
+            read.append(native.data.params.data['GameDataName'])
+            native = native.data.cases[0].v
+        self.assertEqual(read, ['Get_StoneOfFire_IsCompleted_Exp', 'Get_StoneOfWater_IsCompleted_Exp'])
         started = events['Event7'].data.nxt.v.data             # after Step02 of the send-off
         self.assertEqual(started.params.data, {'GameDataName': s.FIRE_QUEST_STARTED})
         self.assertEqual(started.cases[1].v.name, 'Event62')   # fire quest moved only if not started
