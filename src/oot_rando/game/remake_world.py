@@ -155,6 +155,7 @@ ACTOR_ITEMS = {
     'Item_FairyBless_DefenseDouble': 'Double Defense',
     'Item_Ocarina_Fairy': 'Ocarina', 'Item_Ocarina_Time': 'Ocarina',
     'Item_ZeldaLetter': 'Zeldas Letter', 'Item_Arrow_Light': 'Light Arrows',
+    'Item_Bottle_Letter': 'Rutos Letter',
     'Item_Sword_Biggoron': 'Biggoron Sword',
     # Songs (pouch actors given by the song cutscenes, see patching/song_adapter.py).
     'Item_Melody_ZeldaLullaby': 'Zeldas Lullaby', 'Item_Melody_EponaSong': 'Eponas Song',

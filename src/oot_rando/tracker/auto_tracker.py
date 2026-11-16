@@ -11,6 +11,7 @@ from oot_rando.logic.rules import split_age_member
 from oot_rando.randomizer.randomizer_services import ManualTracker, read_artifact
 from oot_rando.tracker.save_reader import load_snapshot
 from oot_rando.paths import state_dir
+from oot_rando.pc_port import KNOWN_EXES, port_exe
 
 
 NAND_SAVE = ('nand', 'user', 'save')
@@ -27,19 +28,36 @@ def emulator_save_root(path):
     return None
 
 
+def port_appdata_names(root):
+    """Names of the %APPDATA% folders a PC port may keep its saves in: its exe's, then the known ports'.
+
+    Both spellings are kept (``longshot`` from the exe, ``Longshot`` as the port writes it): they
+    are one folder on Windows (find_save_slots merges them) but two on case-sensitive systems."""
+    exe = port_exe(root) if root.is_dir() else None
+    names = [exe.stem] if exe else []
+    for known in KNOWN_EXES:
+        name = Path(known).stem.capitalize()
+        if name not in names:
+            names.append(name)
+    return names
+
+
 def save_roots(hookshot_root=None, mods=None):
-    """Save folders of Hookshot, of a portable emulator holding ``mods`` (its mods folder or
-    a seed in it), and of the Eden emulator in %APPDATA% (NAND user saves)."""
+    """Save folders of a PC port (``<game>/user/save``, or ``%APPDATA%/<Port>/save`` where Longshot
+    moves them on import, renaming the old folder ``save.moved-<date>``), of a portable emulator
+    holding ``mods`` (its mods folder or a seed in it), and of Eden in %APPDATA% (NAND user saves)."""
     roots = []
+    appdata = os.environ.get('APPDATA')
     if hookshot_root:
         root = Path(hookshot_root)
         if root.name.lower() == 'mods':
             root = root.parent
         roots.append(root / 'user' / 'save')
+        if appdata:
+            roots.extend(Path(appdata) / name / 'save' for name in port_appdata_names(root))
     portable = emulator_save_root(mods) if mods else None
     if portable:
         roots.append(portable)
-    appdata = os.environ.get('APPDATA')
     if appdata:
         roots.append(Path(appdata) / 'eden' / 'nand' / 'user' / 'save')
     unique = []

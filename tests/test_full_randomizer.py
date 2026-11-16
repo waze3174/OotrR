@@ -82,6 +82,22 @@ class Units(unittest.TestCase):
         with self.assertRaises(ValueError):
             patch_strings(raw, [{'path': ('Actors', 0, 'Gyaml'), 'before': 'Enemy_Keese', 'after': True}])
 
+    def test_boss_souls_are_checked_live(self):
+        # A boss soul found in its own dungeon must bring the boss without leaving the map.
+        from oot_rando.patching.soul_adapter import FAMILIES, presence_changes, soul_presence
+        bosses = [family for family, _, _, boss in FAMILIES if boss]
+        self.assertIn('Barinade', bosses)
+        for family in bosses:
+            self.assertIs(soul_presence('IsGet.Item_Soul_' + family, family)['IsCheckLazy'], True)
+        for key in ('Keese', 'JabuTentacle', 'Region:InsideJabuJabuBelly'):
+            self.assertIs(soul_presence('flag', key)['IsCheckLazy'], False)
+        roots = {'map': {'Actors': [{'Gyaml': 'Enemy_DungeonBoss_Barinade', 'Hash': 7}]}}
+        edit = {'resource': 'map', 'index': 0, 'actor': 'Enemy_DungeonBoss_Barinade', 'hash': '7',
+                'soul': 'Barinade', 'flag': 'IsGet.Item_Soul_Barinade'}
+        changes = presence_changes([edit], roots)['map']
+        self.assertEqual({c['path'][-1]: c['after'] for c in changes},
+                         {'FlagName': 'IsGet.Item_Soul_Barinade', 'IsNegation': False, 'IsCheckLazy': True})
+
     def test_restbl_add_entries(self):
         names = b'x' * 160 + struct.pack('<I', 5)
         entries = sorted([(10, 1), (zlib.crc32(b'Old/File'), 7)])

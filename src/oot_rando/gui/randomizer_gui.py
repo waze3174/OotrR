@@ -21,6 +21,7 @@ from oot_rando.tracker import game_overlay
 from oot_rando.tracker.check_labels import check_labels
 from oot_rando.tracker import live_memory
 from oot_rando.randomizer import spoiler_report
+from oot_rando.randomizer import settings_string
 from oot_rando.tracker import turbo_a
 from oot_rando.patching.randomize_kokiri import POOL, TITLE
 from oot_rando.game.randomizer_categories import CATEGORIES
@@ -70,7 +71,7 @@ OPTION_COPY = {
     'shuffle_npc_gifts': ('Character gifts and minigames', 'Shuffles the supported rewards of characters and minigames.'),
     'shuffle_boss_rewards': ('Boss and dungeon rewards', 'Shuffles spiritual stones, medallions and heart containers. The game scenes are kept.'),
     'shuffle_great_fairies': ('Great fairy rewards', 'Shuffles spells, magic and defense upgrades.'),
-    'shuffle_quest_rewards': ('Main quest rewards', 'Includes the ocarinas, Zelda\'s Letter (with a shuffled child trade quest), the Light Arrows and the Biggoron Sword.'),
+    'shuffle_quest_rewards': ('Main quest rewards', 'Includes the ocarinas, Zelda\'s Letter (with a shuffled child trade quest), the Light Arrows, the Biggoron Sword and Ruto\'s Letter. Songs stay in place.'),
     'shuffle_pots': ('Pots', 'The first reward is shuffled. Once picked up, the pot goes back to its vanilla loot.'),
     'shuffle_crates': ('Crates', 'The first reward is shuffled. Later pickups use the vanilla loot.'),
     'shuffle_beehives': ('Beehives', 'The first reward is shuffled. Later pickups use the vanilla loot.'),
@@ -86,6 +87,127 @@ OPTION_COPY = {
     'logic_no_night_tokens_without_suns_song': ("Night skulltulas need Sun's Song",
                                                  'Waiting for the night is not expected by the logic.'),
 }
+# Longer explanations, shown in the tooltip of each setting (hover the label or the ⓘ).
+# Missing entries use the short text above (OPTION_COPY) or the option's own help.
+OPTION_TIPS = {
+    'accessibility': 'Every location reachable: the logic guarantees that you can open every check of the seed. '
+                     'Only victory guaranteed: some useless locations may stay out of reach, which allows more '
+                     'varied placements.',
+    'logic_no_night_tokens_without_suns_song': "On: gold skulltulas that only come out at night are expected only "
+                                               "once you have Sun's Song. Off: the logic may ask you to wait for "
+                                               "the night (or use the day/night option below).",
+    'skulltulas_always_present': 'Night-only gold skulltulas are also there during the day. Purely a comfort '
+                                 'setting: the logic does not change.',
+    'open_forest': 'The Kokiri Forest exit to Hyrule Field is open from the start: its guard and invisible wall '
+                   'are gone.',
+    'open_kakariko': 'Closed: the guard opens the gate to Death Mountain once he has read Zelda\'s Letter, as in '
+                     'the vanilla game. Open: the gate is open from the start and the Death Mountain part of the '
+                     'Fire Stone quest starts at once. Zelda\'s Letter has no use left: with the quest rewards '
+                     'shuffled, Zelda gives a shuffled item instead. To be confirmed in game.',
+    'open_door_of_time': 'The Door of Time is open from the start and the Master Sword can be pulled without the '
+                         'Spiritual Stones or the Song of Time. Zelda\'s escape still gives the Ocarina of Time '
+                         'and the Song of Time. To be confirmed in game.',
+    'zora_fountain': 'Ruto\'s Letter required: King Zora blocks the way to Zora\'s Fountain until he reads the '
+                     'letter, as in the vanilla game. Always moved: he stands aside from the start and stays '
+                     'there; the letter can no longer be delivered, so it never becomes a bottle. '
+                     'To be confirmed in game.',
+    'gerudo_fortress': 'Four carpenters: free the four carpenters to get the Gerudo Membership Card, as in the '
+                       'vanilla game. One carpenter: the first one freed, in any cell, ends the fortress and '
+                       'gives the card. To be confirmed in game.',
+    'open_gerudo_valley_bridge': 'The broken bridge of Gerudo Valley is repaired from the start: the adult '
+                                 'crosses it on foot without Epona or the Longshot. The carpenters stay in their '
+                                 'cells; the last rescue still gives the Gerudo Membership Card. '
+                                 'To be confirmed in game.',
+    'shuffle_chests': 'On: every chest of the game (big and small, major items included) gets an item of the '
+                      'shuffle. Off: chests keep their vanilla content.',
+    'chest_matching': 'How chests are tied to the logic. Identified chests: only chests matched one to one with '
+                      'the logic hold progression items (safest). Access by zone: more chests are used, each '
+                      'with the most cautious access conditions of its zone.',
+    'shuffle_kokiri_sword': 'The Kokiri Sword leaves its chest and can be anywhere; its chest holds another item. '
+                            'Experimental: to be confirmed in game.',
+    'shuffle_remake_items': 'The remake adds a few items of its own (Deku seed and jar upgrades). On: they join '
+                            'the shuffle as filler, never required to finish.',
+    'tokensanity': 'Each gold skulltula gives a shuffled item instead of its token, and the tokens are placed '
+                   'elsewhere. Dungeons / Overworld: only the skulltulas of that part of the world.',
+    'shuffle_freestanding_items': 'Rupees, hearts and heart pieces lying on the ground give shuffled items. '
+                                  'Dungeons / Overworld: only those of that part of the world.',
+    'shuffle_scrubs': 'Business scrubs that sell one item (stick and nut upgrades, two heart pieces) sell a '
+                      'shuffled item. The scrub still announces its vanilla item; you get the placed one. '
+                      'Low price: 10 rupees. Remake price: 40 and 100 rupees (100 needs the Adult\'s Wallet). '
+                      'Refill scrubs and Dream World scrubs are not included. To be confirmed in game.',
+    'shopsanity': 'Some shop slots sell shuffled items for 10 rupees. One copy of every purchase required by '
+                  'the logic stays on sale; the mask shop is kept.',
+    'shuffle_npc_gifts': 'Rewards given by characters and minigames (the supported ones) are shuffled.',
+    'shuffle_quest_rewards': 'The big story rewards are shuffled: ocarinas, Zelda\'s Letter (the child trade '
+                             'quest is shuffled with it), the Light Arrows, the Biggoron Sword and Ruto\'s Letter (the bottle in Lake Hylia).',
+    'shuffle_boss_rewards': 'Spiritual stones, medallions and boss heart containers are shuffled. The scenes '
+                            'still play.',
+    'shuffle_great_fairies': 'The great fairies give shuffled items instead of spells, magic and defense.',
+    'shuffle_pots': 'The first item of each pot is shuffled. Once picked up, the pot gives its vanilla loot again.',
+    'shuffle_crates': 'The first item of each crate is shuffled, then its vanilla loot.',
+    'shuffle_beehives': 'The first item of each beehive is shuffled, then its vanilla loot.',
+    'shuffle_bushes': 'The first item of each supported bush and grass tuft is shuffled, then its vanilla loot.',
+    'shuffle_rocks': 'The first item of each rock is shuffled. Afterwards the rock behaves as in the vanilla game.',
+    'shuffle_trees': 'Roll into a tree: its first item is shuffled, then its vanilla loot.',
+    'item_pool_value': 'How many items are in the shuffle. Balanced: as in the vanilla game. Plentiful: one extra '
+                       'copy of the major items. Scarce: at most 3 bottles and half the hearts. Minimal: one '
+                       'bottle and no extra hearts.',
+    'start_inventory_from_pool': 'Items held from the start, separated by commas, with a count if needed: '
+                                 '"Hover Boots, Progressive Hookshot x2, Heart Container x3". Songs by name '
+                                 '("Sarias Song"). They are taken out of the shuffle. Tunics are not available yet.',
+    'key_rings_list': 'Only used when "Key rings" is "Chosen dungeons": the dungeons that get a key ring, '
+                      'separated by commas (for example "Forest Temple, Fire Temple").',
+    'shuffle_enemy_spawns': 'Enemies only appear once you have found their soul. Bosses only: one soul per boss. '
+                            'One soul per region: all enemies of a region at once. One soul per enemy type: '
+                            'every kind of enemy has its own soul. A new game is required.',
+    'big_poe_count': 'The Poe collector gives his reward after this many Big Poes (vanilla: 10). '
+                     'To be confirmed in game.',
+}
+# Settings page layout: (card title, card note, [option names]). "game:" names are the
+# general settings of the application (Settings fields), the others complete-mode options.
+# A visible option missing here is shown at the end, in a card named after its tab.
+SETTING_GROUPS = (
+    ('Open world', 'Zones and quests open from the start.',
+     ['game:open_forest', 'open_kakariko', 'open_door_of_time', 'zora_fountain', 'gerudo_fortress',
+      'open_gerudo_valley_bridge']),
+    ('Logic and accessibility', '',
+     ['accessibility', 'logic_no_night_tokens_without_suns_song', 'game:skulltulas_always_present']),
+    ('Item pool', 'What is shuffled and what you start with.',
+     ['item_pool_value', 'start_inventory_from_pool', 'shuffle_kokiri_sword', 'shuffle_remake_items']),
+    ('Shuffled locations', 'Where items can be found.',
+     ['shuffle_chests', 'chest_matching', 'tokensanity', 'shuffle_freestanding_items', 'shuffle_npc_gifts',
+      'shuffle_quest_rewards', 'shuffle_boss_rewards', 'shuffle_great_fairies', 'shuffle_song_items',
+      'shopsanity', 'shuffle_scrubs']),
+    ('Pots, crates and scenery', 'The first item of each source is shuffled, then the vanilla loot.',
+     ['shuffle_pots', 'shuffle_crates', 'shuffle_beehives', 'shuffle_bushes', 'shuffle_rocks', 'shuffle_trees']),
+    ('Dungeon contents', '',
+     ['shuffle_mapcompass', 'shuffle_smallkeys', 'key_rings', 'key_rings_list', 'shuffle_bosskeys']),
+    ('Enemy souls', '', ['shuffle_enemy_spawns']),
+    ('Minigames', '', ['big_poe_count']),
+)
+# Kept in the settings files (older seeds, AP YAML) but never shown: no effect any more.
+HIDDEN_OPTIONS = ('progressive_order', 'progressive_strict', 'fast_chests')
+GAME_OPTION_COPY = {'open_forest': 'Open the way from Kokiri Forest to Hyrule Field',
+                    'skulltulas_always_present': 'Night-only gold skulltulas present day and night'}
+UNTESTED_WORDS = ('confirm', 'validated', 'pilot', 'experimental')
+
+
+def option_tip(option, label, help_text):
+    """Tooltip text of a complete-mode option: title line, then explanation and values."""
+    body = OPTION_TIPS.get(option.name) or help_text or ''
+    parts = [body] if body else []
+    if option.kind == 'choice':
+        supported = [(value, text) for value, text, reason in option.values if reason is None]
+        if len(supported) > 1:
+            lines = []
+            for value, text in supported:
+                mark = ' (experimental)' if value in option.experimental else ''
+                default = ' (default)' if value == option.default else ''
+                lines.append(f'• {text}{default}{mark}')
+            parts.append('Values:\n' + '\n'.join(lines))
+    elif option.experimental and not any(word in body.lower() for word in UNTESTED_WORDS):
+        parts.append('Experimental: to be confirmed in game.')
+    return label + '\n' + '\n\n'.join(parts)
 
 
 class ListVar:
@@ -552,6 +674,11 @@ class Application:
         row = self.buttons(box)
         ttk.Entry(row, textvariable=self.seed).pack(side='left', fill='x', expand=True)
         ttk.Button(row, text='Random', command=lambda: self.seed.set(secrets.token_hex(8))).pack(side='left', padx=(8, 0))
+        row = self.buttons(box, pady=(8, 0))
+        ttk.Label(row, text='Seed string: the seed name and every setting in one text to share.',
+                  style='Muted.TLabel').pack(side='left')
+        ttk.Button(row, text='Paste a seed string…', command=self.import_seed_string).pack(side='right')
+        ttk.Button(row, text='Copy seed string', command=self.copy_seed_string).pack(side='right', padx=(0, 8))
 
     def build_generate_section(self, parent):
         box = self.card(parent)
@@ -597,7 +724,7 @@ class Application:
         self.details = ttk.Frame(parent, style='Page.TFrame')
         details = self.details
         ttk.Label(details, textvariable=self.full_reason, style='Page.TLabel', wraplength=780, justify='left').pack(anchor='w', padx=4, pady=(0, 10))
-        grouped = {}
+        visible = {}
         for option in rando_options.OPTIONS:
             if option.kind in ('items', 'list'):
                 supported = [None, None]  # free text: always shown
@@ -607,29 +734,39 @@ class Application:
                 supported = list(option.supported_ints)
             else:
                 supported = [v for v, label, reason in option.values if reason is None]
-            if len(supported) > 1:
-                grouped.setdefault(option.tab, []).append(option)
+            if len(supported) > 1 and option.name not in HIDDEN_OPTIONS:
+                visible[option.name] = option
             else:
                 self.option_row(None, 0, option)
-        for group in rando_options.TABS:
-            options = grouped.get(group, [])
-            if not options:
+        placed = {name for _, _, names in SETTING_GROUPS for name in names}
+        groups = [(title, note, [n for n in names if n.startswith('game:') or n in visible])
+                  for title, note, names in SETTING_GROUPS]
+        leftovers = {}
+        for name, option in visible.items():   # options added later and not placed yet
+            if name not in placed:
+                leftovers.setdefault(option.tab, []).append(name)
+        groups += [(tab, '', names) for tab, names in leftovers.items()]
+        for title, note, names in groups:
+            if not names:
                 continue
-            title = {'Logic': 'Logic and accessibility', 'Items': 'Items and locations', 'Dungeons': 'Dungeon contents', 'Souls': 'Enemy souls'}.get(group, group)
-            frame = self.card(details, title)
+            frame = self.card(details, title, note or None)
             rows = ttk.Frame(frame)
             rows.pack(fill='x')
             rows.columnconfigure(0, weight=1)
-            for index, option in enumerate(options):
-                self.option_row(rows, index, option)
-        box = self.card(details, 'Quality of life', 'Always on: skippable cutscenes (hold X, or Plus), chests without cutscene, turbo A (hold A in a dialogue).')
+            for index, name in enumerate(names):
+                if name.startswith('game:'):
+                    key = name[len('game:'):]
+                    text = GAME_OPTION_COPY[key]
+                    self.switch_row(rows, index, text, self.options[key], tip=text + '\n' + OPTION_TIPS[key])
+                else:
+                    self.option_row(rows, index, visible[name])
+        self.card(details, 'Always on', 'Skippable cutscenes (hold X, or Plus), chests without cutscene, '
+                                       'turbo A (hold A in a dialogue).')
+        box = self.card(details, 'In-game tracker')
         rows = ttk.Frame(box)
         rows.pack(fill='x')
         rows.columnconfigure(0, weight=1)
-        self.switch_row(rows, 0, 'Open the way from Kokiri Forest to Hyrule Field', self.options['open_forest'])
-        self.switch_row(rows, 1, 'Night-only gold skulltulas present day and night (the logic does not change)',
-                        self.options['skulltulas_always_present'])
-        self.switch_row(rows, 2, 'In-game tracker: R + right stick up shows the items and checks found (GPL-3 module, '
+        self.switch_row(rows, 0, 'In-game tracker: R + right stick up shows the items and checks found (GPL-3 module, '
                         'runs only while this seed is enabled)', self.ingame_tracker)
         box = self.card(details, 'Share these settings')
         row = self.buttons(box)
@@ -665,10 +802,21 @@ class Application:
             art.configure(background=self.colors['gold_soft' if key == current else 'green_soft'])
         self.customize_hint.set('' if current else 'Custom settings')
 
-    def switch_row(self, parent, index, text, variable, command=None):
+    def label_cell(self, parent, index, text, tip=None, wraplength=520, cursor=''):
+        """Column 0 of a settings row: the label, then an ⓘ carrying ``tip`` as a tooltip."""
+        cell = ttk.Frame(parent)
+        cell.grid(row=index, column=0, sticky='w', padx=(0, 18), pady=7)
+        label = ttk.Label(cell, text=text, wraplength=wraplength, justify='left', cursor=cursor)
+        label.pack(side='left')
+        icon = None
+        if tip:
+            icon = theme.info_icon(cell, self.fonts, background=self.colors['surface'])
+            icon.pack(side='left', padx=(4, 0))
+        return label, icon
+
+    def switch_row(self, parent, index, text, variable, command=None, tip=None):
         """Label on the left, switch on the right; clicking the label toggles too."""
-        label = ttk.Label(parent, text=text, wraplength=560, justify='left', cursor='hand2')
-        label.grid(row=index, column=0, sticky='w', pady=7)
+        label, icon = self.label_cell(parent, index, text, tip, cursor='hand2')
         widget = ttk.Checkbutton(parent, variable=variable, command=command)
         widget.grid(row=index, column=1, sticky='e', pady=7)
         def click(event):
@@ -676,6 +824,8 @@ class Application:
                 widget.invoke()
                 widget.focus_set()
         label.bind('<Button-1>', click)
+        if tip:
+            theme.Tooltip((label, icon, widget), tip, self.fonts)
         if index:
             theme.rule(parent).grid(row=index, column=0, columnspan=2, sticky='new')
         return widget
@@ -1073,6 +1223,7 @@ class Application:
     # ------------------------------------------------------- complete mode
     def option_row(self, parent, index, option):
         label, help_text = OPTION_COPY.get(option.name, (option.label, option.help))
+        tip = option_tip(option, label, help_text)
         def describe():
             self.full_reason.set(label + ' — ' + (help_text or 'Choose the value that suits your game.'))
             self.update_presets()
@@ -1083,7 +1234,7 @@ class Application:
                 widget.bind('<FocusOut>', lambda event: describe(), add='+')
         elif option.kind == 'bool':
             variable = tk.BooleanVar(value=option.default)
-            widget = self.switch_row(parent, index, label, variable, command=describe) if parent else None
+            widget = self.switch_row(parent, index, label, variable, command=describe, tip=tip) if parent else None
         elif option.kind == 'int':
             variable = tk.IntVar(value=option.default)
             widget = ttk.Spinbox(parent, from_=min(option.supported_ints), to=max(option.supported_ints), textvariable=variable, width=8, command=describe) if parent else None
@@ -1106,8 +1257,9 @@ class Application:
         self.full_vars[option.name] = variable
         if widget:
             if option.kind != 'bool':
-                ttk.Label(parent, text=label, wraplength=480).grid(row=index, column=0, sticky='w', padx=(0, 18), pady=7)
+                text_label, icon = self.label_cell(parent, index, label, tip, wraplength=460)
                 widget.grid(row=index, column=1, sticky='e', pady=7)
+                theme.Tooltip((text_label, icon), tip, self.fonts)
                 if index:
                     theme.rule(parent).grid(row=index, column=0, columnspan=2, sticky='new')
             widget.bind('<FocusIn>', lambda event: describe(), add='+')
@@ -1257,6 +1409,38 @@ class Application:
         else:
             self.full_enabled.set(False)
             self.update_category_states()
+
+    def copy_seed_string(self):
+        try:
+            text = settings_string.encode(self.get_settings())
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            self.status.set(f'Seed string copied ({len(text)} characters). Share it with the same version '
+                            f'of the randomizer ({APP_VERSION}).')
+        except Exception as error:
+            self.error(error)
+
+    def import_seed_string(self):
+        try:
+            clipboard = self.root.clipboard_get().strip()
+        except tk.TclError:
+            clipboard = ''
+        initial = clipboard if clipboard.upper().startswith(settings_string.PREFIX) else ''
+        text = simpledialog.askstring('Paste a seed string', 'Seed string (starts with '
+                                      + settings_string.PREFIX + '):', initialvalue=initial, parent=self.root)
+        if not text or not text.strip():
+            return
+        try:
+            settings, version = settings_string.decode(text)
+            if version != GENERATOR_VERSION and not messagebox.askyesno(
+                    'Other randomizer version',
+                    f'This seed string comes from generator {version}; this application uses '
+                    f'{GENERATOR_VERSION}. The same settings may give a different game. Import anyway?'):
+                return
+            self.apply_settings(settings)
+            self.status.set('Seed string imported: seed "' + settings.seed + '".')
+        except Exception as error:
+            self.error(error)
 
     def import_settings(self):
         name = filedialog.askopenfilename(filetypes=[('JSON settings', '*.json')])

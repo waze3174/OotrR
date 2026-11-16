@@ -33,6 +33,8 @@ _REMAKE = _load('remake.json')
 REMAKE_LOCATION_RULES = {name: entry['rule'] for name, entry in _REMAKE['location_rules'].items()}
 REMAKE_LOCATION_REGIONS = {name: (entry['from'], entry['to'])
                            for name, entry in _REMAKE['location_regions'].items()}
+# Vanilla items that differ in the remake ({location: item}).
+REMAKE_LOCATION_VANILLA = {name: entry['item'] for name, entry in _REMAKE.get('location_vanilla', {}).items()}
 # Exits whose rule differs in the remake ({"Region -> Target": rule}).
 REMAKE_EXIT_RULES = {name: entry['rule'] for name, entry in _REMAKE.get('exit_rules', {}).items()}
 # Remake-only events, by region ({region: {event: rule}}).
@@ -55,7 +57,8 @@ class World:
         self.remake = {'location_rules': dict(REMAKE_LOCATION_RULES),
                        'location_regions': {k: list(v) for k, v in REMAKE_LOCATION_REGIONS.items()},
                        'exit_rules': dict(REMAKE_EXIT_RULES),
-                       'events': {k: dict(v) for k, v in REMAKE_EVENTS.items()}}
+                       'events': {k: dict(v) for k, v in REMAKE_EVENTS.items()},
+                       'location_vanilla': dict(REMAKE_LOCATION_VANILLA)}
 
     @property
     def version(self):
@@ -72,6 +75,8 @@ class World:
         return bool(entry and entry['progression'])
 
     def vanilla_item(self, location):
+        if location in self.remake['location_vanilla']:
+            return self.remake['location_vanilla'][location]
         entry = self.location_table.get(location)
         return entry['vanilla'] if entry else None
 

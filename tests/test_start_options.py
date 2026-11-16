@@ -91,6 +91,40 @@ class GuiSourceTests(unittest.TestCase):
         for name in SOURCE_LABELS:
             self.assertIn('full_' + ('chests' if name == 'chest' else name), kinds, name)
 
+    def test_every_setting_has_a_tooltip_and_a_place(self):
+        from oot_rando.gui import randomizer_gui as g
+        names = {o.name: o for o in rando_options.OPTIONS}
+        placed = [n for _, _, group in g.SETTING_GROUPS for n in group]
+        self.assertEqual(len(placed), len(set(placed)))
+        for name in placed:
+            if name.startswith('game:'):
+                key = name[len('game:'):]
+                self.assertIn(key, g.GAME_OPTION_COPY)
+                self.assertTrue(g.OPTION_TIPS.get(key), key)
+        shown_names = set()
+        # Every option the page shows has its card (names of options absent from this
+        # version are skipped by the layout).
+        for option in rando_options.OPTIONS:
+            if option.kind in ('items', 'list'):
+                shown = True
+            elif option.kind == 'bool':
+                shown = len([v for v in (False, True) if option.supported(v)]) > 1
+            elif option.kind == 'int':
+                shown = len(option.supported_ints) > 1
+            else:
+                shown = len([v for v, _, reason in option.values if reason is None]) > 1
+            if shown and option.name not in g.HIDDEN_OPTIONS:
+                self.assertIn(option.name, placed, option.name)
+                shown_names.add(option.name)
+        self.assertTrue(set(g.HIDDEN_OPTIONS) <= set(names))
+        for option in rando_options.OPTIONS:
+            label, help_text = g.OPTION_COPY.get(option.name, (option.label, option.help))
+            tip = g.option_tip(option, label, help_text)
+            title, _, body = tip.partition('\n')
+            self.assertEqual(title, label)
+            if option.name in shown_names:
+                self.assertTrue(body.strip(), option.name)   # every shown setting is explained
+
 
 class DungeonStartTests(unittest.TestCase):
     def test_start_values(self):

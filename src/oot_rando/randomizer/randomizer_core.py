@@ -26,7 +26,8 @@ from oot_rando.patching.qol_patches import (STATIC, STATIC_SOURCE_SHA256, DYNAMI
                          DC_BOULDER_MODULE, let_bombs_break_dc_boulder, SCRUB_FLOW, keep_one_scrub_good,
                          ACTION_GUIDE_FLOW, ocarina_guide_on_get,
                          SWORD_CHEST_FLOW, skip_kokiri_sword_cutscene,
-                         NOCTURNAL_SKULLTULA_MAPS, nocturnal_skulltula_edits)
+                         NOCTURNAL_SKULLTULA_MAPS, nocturnal_skulltula_edits,
+                         NIGHT_SKULLTULA_MODULE, keep_night_skulltulas_by_day)
 from oot_rando.game.randomizer_categories import CATEGORIES
 from oot_rando.game.world_maps import SAFE_CATEGORIES, build_world, effective_members
 from oot_rando.game.resource_allocations import allocation, grow_resources, add_resources
@@ -401,6 +402,9 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
                     raw_maps[path], nocturnal = patch_strings(current, edits), nocturnal + len(edits)
             if not nocturnal:
                 raise ValueError('Night skulltulas not found in the maps.')
+            # The map logic deletes them by day: that delete input becomes false.
+            extra_raw[NIGHT_SKULLTULA_MODULE], _ = keep_night_skulltulas_by_day(
+                extra_raw.get(NIGHT_SKULLTULA_MODULE) or read(NIGHT_SKULLTULA_MODULE))
         from oot_rando.game.tracking_metadata import GAMEDATA, add_saved_flags, build_tracking, reward_label
         from oot_rando.patching.soul_adapter import murmur3
         marker_name = SEED_MARKER_PREFIX + (save_seed_id or settings_identity(settings))
@@ -467,11 +471,23 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             story = {}
             for path, key, fix in story_fixes.FLOW_FIXES:
                 extra_raw[path], story[key] = fix(extra_raw.get(path) or decompress(read(path), d))
-            temple = raw_maps.get(story_fixes.TEMPLE_MAP) or decompress(read(story_fixes.TEMPLE_MAP), d)
+            # First arrivals (area presentations) never move a quest back.
+            from oot_rando.patching.quest_guard import CHALLENGES as CHALLENGE_TABLE
+            arrival_flows, story['first_arrivals'] = story_fixes.keep_first_arrivals_forward(
+                lambda path: extra_raw.get(path) or decompress(read(path), d),
+                decompress(read(CHALLENGE_TABLE), d))
+            extra_raw.update(arrival_flows)
+            temple =raw_maps.get(story_fixes.TEMPLE_MAP) or decompress(read(story_fixes.TEMPLE_MAP), d)
             sheik_edits = story_fixes.sheik_presence_edits(Byml(temple).root)
             raw_maps[story_fixes.TEMPLE_MAP] = patch_strings(temple, sheik_edits)
             story['sheik'] = {'map': story_fixes.TEMPLE_MAP, 'actor': sheik_edits[0]['path'][1],
                               'presence': story_fixes.SHEIK_PRESENCE}
+            # Adult Link is no longer stopped by an invisible wall at Zora's River mouth.
+            river = raw_maps.get(story_fixes.ZORA_RIVER_MAP) or decompress(read(story_fixes.ZORA_RIVER_MAP), d)
+            wall_edits, wall_actors = story_fixes.zora_river_wall_edits(Byml(river).root)
+            raw_maps[story_fixes.ZORA_RIVER_MAP] = patch_strings(river, wall_edits)
+            story['zora_river_wall'] = {'map': story_fixes.ZORA_RIVER_MAP, 'actors': wall_actors,
+                                        'presence': story_fixes.ZORA_RIVER_WALL_PRESENCE}
             # Zelda's escape on the three stones, checked at every item get.
             extra_raw[ACTION_GUIDE_FLOW], story['zelda_escape_item_get'] = story_fixes.zelda_escape_on_item_get(
                 extra_raw[ACTION_GUIDE_FLOW])
@@ -492,7 +508,10 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
         if gamedata_source is None:
             gamedata_source = decompress(read(GAMEDATA), d)
         goal_name = GOAL_MARKER_PREFIX + settings_identity(settings) if settings.archipelago is not None else None
-        extra_raw[GAMEDATA] = add_saved_flags(gamedata_source, {marker_name: False,
+        # Great Fairies: one saved flag each, set by her reward (patching/story_fixes.py).
+        from oot_rando.patching.story_fixes import great_fairy_saved_flags
+        fairy_flags = great_fairy_saved_flags() if settings.full is not None else {}
+        extra_raw[GAMEDATA] = add_saved_flags(gamedata_source, {marker_name: False, **fairy_flags,
                                                                 **({goal_name: False} if goal_name else {})})
         # Bind a save only when the actual new-game opening completes. A True
         # default would incorrectly bind an old save when its missing flags initialize.
@@ -878,6 +897,10 @@ def _build_full(nup, dictionaries_, members, settings, raw_maps, sources, read, 
     for resource, edits in sorted(event_changes.items()):
         report('Event: ' + resource.split('/')[-1])
         modified[resource] = patch_event_params(decompress(read(resource), dictionaries_), edits)
+    from oot_rando.patching.qol_patches import SARIA_GIFT_FLOW, saria_add_before_display
+    if SARIA_GIFT_FLOW in event_changes:
+        # Saria's gift is in the pouch before its get window (and ActionGuide) runs.
+        modified[SARIA_GIFT_FLOW], _ = saria_add_before_display(modified[SARIA_GIFT_FLOW])
     from oot_rando.patching.event_patch import add_collection_markers
     from oot_rando.game.tracking_metadata import GAMEDATA, add_saved_flags
     markers, saved_flags = defaultdict(dict), {}

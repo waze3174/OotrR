@@ -279,6 +279,19 @@ DIALOGUE_ACTIONS = ('EventTalk', 'EventTalkWithInstanceNameLabel', 'EventPoeSpir
 # skipped it stayed on screen (11/11). It now opens once the presentation is over,
 # only when it was watched to the end.
 LOCATION_UI_ACTION = 'EventTriggerOpenLocationUI'
+# That frame also marks the area visited (``IsVisitLocation.<area>``): the map menu
+# shows "???" for an area never marked (Discord 16/11, every skipped presentation:
+# Hyrule Field, Deku Tree... while Kokiri Forest, never skipped, had its map). Saves
+# compared in game: vanilla sets IsVisitLocation.InsideTheDekuTree, the seed did not.
+LOCATION_PREFIX, LOCATION_SUFFIX = 'Work/Location/', '.game__location__Location.gyml'
+
+
+def location_visit_flag(location_name):
+    """``IsVisitLocation.<area>`` of a location UI parameter (``Work/Location/<area>....gyml``)."""
+    if not (isinstance(location_name, str) and location_name.startswith(LOCATION_PREFIX)
+            and location_name.endswith(LOCATION_SUFFIX)):
+        raise ValueError('Unexpected area name: ' + repr(location_name))
+    return 'IsVisitLocation.' + location_name[len(LOCATION_PREFIX):-len(LOCATION_SUFFIX)]
 
 
 def dialogue_actions(chart):
@@ -341,6 +354,18 @@ def add_skip_window(raw):
     skipped_query = holder(actor.queries, 'EventQueryIsEventSkipedMostRecent') if location_uis else None
     location_names = {}   # deferred frame event -> (LocationName, (actor, action))
 
+    def gamedata_owner():
+        found = next((a for a in chart.actors if a.identifier.name == 'GameDataActor'
+                      and a.identifier.sub_name == ''), None)
+        if found is None:
+            found = Actor()
+            found.identifier = ActorIdentifier('GameDataActor')
+            found.concurrent_clips = 1
+            found.params = Container()
+            found.params.data = dict(GAMEDATA_ACTOR_PARAMS)
+            chart.actors.append(found)
+        return found, holder(found.actions, 'EventTriggerSetGameDataBool')
+
     def new_event(name, action, params, owner=None):
         event = Event()
         event.name, event.data = name, ActionEvent()
@@ -391,8 +416,15 @@ def add_skip_window(raw):
             ui.data.actor, ui.data.actor_action = make_rindex(actor), make_rindex(actions['EventWait'])
             ui.data.params.data = {'IsWaitEnd': True, 'Frames': 1}
             expected[ui.name] = dict(ui.data.params.data)
+        visit = location_visit_flag(name)
         for index, end in enumerate(ends):
             after = end.data.nxt.v if end.data.nxt is not None else None
+            # The frame is what marks the area visited for the map menu: a skipped
+            # presentation still marks it (else the map shows "???").
+            visited = new_event(f'RandoLocationVisit_{entry_name}_{index}', None,
+                                {'GameDataName': visit, 'Value': True, 'Index': -1}, gamedata_owner())
+            visited.data.nxt = make_index(after)
+            after = visited
             shown = new_event(f'RandoLocationUI_{entry_name}_{index}', None, {'LocationName': name}, owner)
             shown.data.nxt = make_index(after)
             check = Event()
@@ -405,7 +437,7 @@ def add_skip_window(raw):
             chart.events.append(check)
             expected[check.name] = None
             end.data.nxt = make_index(check)
-        return {'location': name, 'deferred': sorted(e.name for e in uis)}
+        return {'location': name, 'deferred': sorted(e.name for e in uis), 'visit': visit}
     def anchors(first, seen):
         """Where the window closes: after the last top-level join of the chain; a
         branch closes it in each of its cases. (Until 11/11 a branch after a join
@@ -1306,6 +1338,48 @@ def ocarina_guide_on_get(raw):
 # Dm_SY_GetInEvent (and its own sub-flows) in RSDB GameAnalyzedEventInfo, or it never
 # starts (user test 11/11: white screen on arriving in Kokiri Forest after Gohma):
 # event_info.add_subflow_dependencies, applied to every changed flow.
+# Saria's gift (Dm_Kokiri_0155, entry C01): vanilla shows the get window first
+# (Event58 -> Event77 GetPouchContent/DisplayGetByActorName -> Event78 -> fork Event26)
+# and only adds the ocarina in a branch of that fork (Event68, after the window). The
+# get window runs ActionGuide (key rings, progressive tokens, ...) before the item is
+# in the pouch, so a shuffled item there only took effect at the next item get
+# (Discord 16/11, 0.6.3: received with the Kakariko rooftop man's gift). The add now
+# comes first: Event58 -> Event68 -> Event77, and leaves the fork.
+SARIA_GIFT_FLOW = 'Event/EventFlow/Dm_Kokiri_0155.bfevfl.zs'
+SARIA_ADD, SARIA_DISPLAY, SARIA_BEFORE, SARIA_FORK = 'Event68', 'Event77', 'Event58', 'Event26'
+
+
+def saria_add_before_display(raw):
+    """Saria's gift added to the pouch before its get window. Returns (bytes, report)."""
+    import io
+    from evfl.util import make_index
+    from oot_rando.patching.event_patch import _flow, _snapshot
+    flow = _flow(raw)
+    events = {e.name: e for e in flow.flowchart.events}
+    expected = _snapshot(flow)
+    add, display = events.get(SARIA_ADD), events.get(SARIA_DISPLAY)
+    before, fork = events.get(SARIA_BEFORE), events.get(SARIA_FORK)
+    if (add is None or display is None or before is None or fork is None
+            or getattr(add.data, 'actor_action', None) is None
+            or add.data.actor_action.v.v != 'EventTriggerAddOrRemovePouchContent'
+            or getattr(display.data, 'entry_point_name', None) != 'DisplayGetByActorName'
+            or before.data.nxt.v is not display or add.data.nxt.v is not None
+            or add not in [f.v for f in fork.data.forks]):
+        raise ValueError('Unexpected Saria gift flow (already patched?).')
+    fork.data.forks = [f for f in fork.data.forks if f.v is not add]
+    add.data.nxt = make_index(display)
+    before.data.nxt = make_index(add)
+    stream = io.BytesIO()
+    flow.write(stream)
+    result = stream.getvalue()
+    checked = {e.name: e for e in _flow(result).flowchart.events}
+    if (_snapshot(_flow(result)) != expected or checked[SARIA_BEFORE].data.nxt.v is not checked[SARIA_ADD]
+            or checked[SARIA_ADD].data.nxt.v is not checked[SARIA_DISPLAY]
+            or checked[SARIA_ADD] in [f.v for f in checked[SARIA_FORK].data.forks]):
+        raise ValueError('Saria gift reordering failed.')
+    return result, {'add': SARIA_ADD, 'display': SARIA_DISPLAY}
+
+
 GIFT_AFTER_CUTSCENE = {
     'Event/EventFlow/Dm_Kokiri_0130.bfevfl.zs': {
         'event': 'Event22',
@@ -1918,6 +1992,50 @@ NOCTURNAL_SKULLTULA_MAPS = tuple(f'Banc/{folder}/{folder}_{variant}_Static.bcett
     ('KakarikoVillage', 'Adult'), ('KakarikoVillage', 'Child'), ('KokiriForest', 'Adult'),
     ('KokiriForest', 'Child'), ('ZoraFountain', 'Adult'), ('ZoraFountain', 'Child'),
     ('ZoraRiver', 'Adult'), ('ZoraRiver', 'Child')))
+
+
+# The map flag alone is not enough: every night-only skulltula (and its spider web) sits
+# in an AI group running this logic module, which DELETES the skulltula during the day
+# (node 0 ``ActorLogicEnemySkulltulaGold``, input ``Logic_Delete`` = node 2, the OR of
+# "day at load" and "day since the last night"). The module is shared by the 18 maps.
+NIGHT_SKULLTULA_MODULE = 'Logic/Gimmick_Nighttime_Skulltula_Gold_Appear_05a9.logic.module.ainb'
+_USES_DEFAULT = 1 << 23
+
+
+def keep_night_skulltulas_by_day(raw):
+    """Night-only gold skulltulas are never deleted by day. Returns (bytes, report).
+
+    ``Logic_Delete`` of the skulltula node becomes the constant ``false`` (same encoding
+    as its ``Logic_Create`` neighbour: no source node, "uses default" flag)."""
+    import copy
+    import struct
+    import ainb
+    original = ainb.AINB.from_binary(raw).as_dict()
+    nodes = original['Nodes']
+    inputs = nodes[0]['Parameters']['Inputs']['Bool'] if nodes else []
+    if (nodes[0].get('Name') != 'ActorLogicEnemySkulltulaGold' or len(inputs) < 3
+            or inputs[2]['Name'] != 'Logic_Delete' or (inputs[2]['Node Index'], inputs[2]['Output Index']) != (2, 1)
+            or nodes[2].get('Name') != 'OperateOR'):
+        raise ValueError('Unexpected night skulltula logic.')
+    header = struct.unpack_from('<29I', raw, 0)
+    io_offset = header[13]
+    bool_inputs = struct.unpack_from('<I', raw, io_offset + 8)[0]
+    if struct.unpack_from('<h', raw, _AINB_NODE_TABLE + 2)[0] != 0:
+        raise ValueError('Night skulltula node table misread.')
+    params = struct.unpack_from('<I', raw, _AINB_NODE_TABLE + 0x14)[0]
+    first = struct.unpack_from('<I', raw, params + 0x30 + 16)[0]
+    entry = bool_inputs + (first + 2) * 0x10
+    if struct.unpack_from('<hhII', raw, entry + 4) != (2, 1, 0, 0):
+        raise ValueError('Night skulltula delete input misread.')
+    result = bytearray(raw)
+    struct.pack_into('<hhII', result, entry + 4, -1, 0, _USES_DEFAULT, 0)
+    result = bytes(result)
+    expected = copy.deepcopy(original)
+    changed = expected['Nodes'][0]['Parameters']['Inputs']['Bool'][2]
+    changed.update({'Node Index': -1, 'Output Index': 0, 'Flags': ['Uses Default'], 'Default Value': False})
+    if ainb.AINB.from_binary(result).as_dict() != expected or len(result) != len(raw):
+        raise ValueError('The night skulltula patch changed more than its delete input.')
+    return result, {'module': NIGHT_SKULLTULA_MODULE, 'node': 0, 'input': 'Logic_Delete'}
 
 
 def is_nocturnal_skulltula(actor):

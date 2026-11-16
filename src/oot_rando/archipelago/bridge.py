@@ -18,7 +18,7 @@ import hashlib
 import json
 
 GAME = 'OoT Remake'
-CATALOG_VERSION = 1
+CATALOG_VERSION = 2   # 2: readable location names (game/check_names.py)
 PATCH_FORMAT = 'oot-remake-archipelago'
 PATCH_VERSION = 1
 PATCH_SUFFIX = '.aprmk'
@@ -117,14 +117,10 @@ def player_yaml(values, open_forest, name='Player'):
 
 # ------------------------------------------------------------------ catalog
 def location_name(data, entry, gid):
-    from oot_rando.randomizer.full_randomizer import SOURCE_LABELS, _entry_zone
+    """Same name as the tracker and the spoiler (``full_randomizer.check_name``)."""
+    from oot_rando.randomizer.full_randomizer import _entry_zone, check_name
     from oot_rando.game.remake_world import zone_label
-    if entry['kind'] == 'exact' and entry['ap']:
-        return entry['ap'][0]
-    label = SOURCE_LABELS.get(entry.get('source', 'chest'), entry.get('source', 'chest'))
-    zone = zone_label(_entry_zone(data, entry, gid)) or entry['folder']
-    tail = str(entry['hash'])[-6:] if entry.get('hash') else gid.split('#')[-1][-6:]
-    return f'{zone} {label} {tail}'
+    return check_name(entry, gid, zone_label(_entry_zone(data, entry, gid)) or entry['folder'])
 
 
 def _catalog_variants():

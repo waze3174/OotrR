@@ -81,6 +81,23 @@ class Units(unittest.TestCase):
         self.assertEqual(entries['KokiriForest#free#8']['reason'], 'conditional_presence')
         self.assertEqual(entries['KokiriForest#free#2']['vanilla'], 'Piece of Heart')
 
+    def test_rutos_letter_is_a_quest_reward(self):
+        maps = {'Banc/HyruleField/HyruleField_Child_Static.bcett.byml.zs': {'root': {'Actors': [
+            {'Gyaml': 'Obj_Bottle_Letter', 'Hash': 9, 'Translate': [-151.6, 125.0, 461.0]}]}}}
+        entry = scan_map_sources(maps)['HyruleField#letter#9']
+        self.assertEqual((entry['source'], entry['form'], entry['kind'], entry['ap'], entry['vanilla']),
+                         ('quest', 'world', 'exact', ['LH Underwater Item'], 'Rutos Letter'))
+        self.assertEqual(entry['variants'][0]['field'], 'Gyaml')
+        self.assertIsNone(entry['reason'])
+        self.assertNotIn('LH Underwater Item', EXCLUDED_NPC_LOCATIONS)
+        self.assertTrue(source_in_scope(entry, enabled_sources(
+            rando_options.validate({'shuffle_quest_rewards': True}, supported_only=True))))
+        self.assertFalse(source_in_scope(entry, enabled_sources(
+            rando_options.validate({}, supported_only=True))))
+        from oot_rando.game.remake_world import item_actor
+        self.assertEqual(item_actor('Rutos Letter', ''), 'Item_Bottle_Letter')
+        self.assertEqual(form_actor('Item_Bottle_Letter', 'world'), 'Obj_Rando_Item_Bottle_Letter')
+
     def test_empty_rocks_receive_a_drop(self):
         maps = {'Banc/HyruleField/HyruleField_Child_Static.bcett.byml.zs': {'root': {'Actors': [
             {'Gyaml': 'Obj_LiftRock_A_01', 'Hash': 1},

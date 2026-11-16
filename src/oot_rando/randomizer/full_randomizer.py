@@ -752,9 +752,7 @@ def _result(data, logic, options, matches, shuffled, placed, natives, sphere_of,
             from oot_rando.patching.key_adapter import specific_actor
             canonical = specific_actor(item)   # sets its own dungeon's map / compass anywhere
         actor = form_actor(canonical, entry.get('form', 'chest'), skulltula_drop=source == 'skulltula')
-        label = SOURCE_LABELS.get(source, source)
-        name = entry['ap'][0] if entry['kind'] == 'exact' else (
-            f'{entry["folder"]} — {label} {str(entry["hash"])[-6:]}' if entry['hash'] else gid)
+        name = check_name(entry, gid)
         placements.append({'id': gid, 'folder': entry['folder'], 'hash': entry['hash'], 'kind': entry['kind'],
                            'source': source, 'form': entry.get('form', 'chest'),
                            'before': entry['before'], 'after': actor, 'item': item,
@@ -798,6 +796,32 @@ def _result(data, logic, options, matches, shuffled, placed, natives, sphere_of,
 REPEATABLE = ('pots', 'bushes', 'rocks', 'crates', 'beehives', 'trees')
 
 
+def check_name(entry, gid, zone=None):
+    """Name of a check: its AP location when it has its own, else where it stands
+    (``game/check_names.py``: KF_sarias_house_heart_1), else its AP location (NPC gifts)."""
+    from oot_rando.game.check_names import entry_label
+    if entry['kind'] == 'exact' and entry['ap']:
+        return entry['ap'][0]
+    label = entry_label(entry)
+    if label:
+        return label
+    if gid.startswith('npc#'):
+        return gid[len('npc#'):]
+    if entry.get('hash'):
+        kind = SOURCE_LABELS.get(entry.get('source', 'chest'), entry.get('source', 'chest'))
+        return f'{zone or entry["folder"]} {kind} {str(entry["hash"])[-6:]}'
+    return gid
+
+
+def covered_locations(entry, gid):
+    """AP locations a remake source stands for: its matched or candidate locations, and
+    the AP location of an NPC gift (``npc#<location>``). They are not listed twice."""
+    covered = set(entry['ap'] if entry['kind'] in ('exact', 'group', 'area') else ())
+    if gid.startswith('npc#'):
+        covered.add(gid[len('npc#'):])
+    return covered
+
+
 def _entry_zone(data, entry, gid):
     if entry['ap'] and (entry['kind'] in ('exact', 'group') or entry['folder'] not in ZONE_LABELS):
         return location_zone(data, entry['ap'][0])
@@ -817,14 +841,12 @@ def tracker_checks(data, matches, shuffled):
     for gid in sorted(matches):
         entry = matches[gid]
         source = entry.get('source', 'chest')
-        if entry['kind'] in ('exact', 'group'):
-            covered.update(entry['ap'])
-        label = SOURCE_LABELS.get(source, source)
+        covered.update(covered_locations(entry, gid))
         zone = _entry_zone(data, entry, gid)
         if entry['kind'] == 'exact' and entry['ap']:
             name = entry['ap'][0]
         else:
-            name = f'{zone_label(zone)} {label} {str(entry["hash"])[-6:]}' if entry.get('hash') else gid
+            name = check_name(entry, gid, zone_label(zone))
             age = source_age(entry['variants'])
             if age:
                 name += f' ({age})'   # only on that age's maps

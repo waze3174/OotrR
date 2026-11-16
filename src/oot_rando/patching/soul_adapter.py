@@ -533,6 +533,24 @@ def build_item_files(read_raw, specs, message_archives=()):
     return modified, new
 
 
+def is_boss_soul(key):
+    """A boss soul: only required to enter the boss room, so it can be found in the same map."""
+    return bool(BY_ID.get(key, (None, None, None))[2])
+
+
+def soul_presence(flag, key):
+    """``Presence`` of an enemy bound to soul ``key``.
+
+    A boss soul can be picked up inside its own dungeon (the logic only asks for it at
+    the boss door), while the map is loaded: an immediate check (``IsCheckLazy`` false,
+    read when the map loads) left the boss away until the dungeon was left and entered
+    again, so the boss scene had no boss (15/11 report, Barinade). The lazy check, as the
+    vanilla maps use for actors that appear or leave on a flag set in the map (Death
+    Mountain Tektites, Enemy Museum statues), follows the flag live. Other souls are
+    required to enter their dungeon, so they keep the immediate check."""
+    return {'FlagName': flag, 'IsNegation': False, 'IsCheckLazy': is_boss_soul(key)}
+
+
 def presence_changes(edits, roots):
     """BYML edits adding ``Presence`` to every soul-bound enemy (absent before)."""
     changes = defaultdict(list)
@@ -541,7 +559,7 @@ def presence_changes(edits, roots):
         if actor.get('Gyaml') != edit['actor'] or str(actor.get('Hash')) != edit['hash'] or 'Presence' in actor:
             raise ValueError('Unexpected enemy for souls: ' + edit['hash'])
         base = ('Actors', edit['index'], 'Presence')
-        changes[edit['resource']] += [{'path': base + ('FlagName',), 'before': None, 'after': edit['flag']},
-                                      {'path': base + ('IsNegation',), 'before': None, 'after': False},
-                                      {'path': base + ('IsCheckLazy',), 'before': None, 'after': False}]
+        presence = soul_presence(edit['flag'], edit['soul'])
+        changes[edit['resource']] += [{'path': base + (name,), 'before': None, 'after': presence[name]}
+                                      for name in ('FlagName', 'IsNegation', 'IsCheckLazy')]
     return dict(changes)

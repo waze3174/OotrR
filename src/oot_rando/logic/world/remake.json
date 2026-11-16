@@ -81,7 +81,7 @@
  "exit_rules": {
   "ZR Front -> Zora River": {
    "rule": "can_blast_or_smash",
-   "why": "The remake does not let adult Link hop past the boulder at the river mouth: it must be blown up or smashed (prudence until checked in game)."
+   "why": "The remake does not let adult Link hop past the boulder at the river mouth: it must be blown up or smashed. The seed now makes the river mouth air walls child-only (story_fixes.zora_river_wall_edits); this rule stays until adult Link is seen passing in game, then AP's 'is_adult or has_explosives' can come back."
   },
   "Market Back Alley -> Market Bombchu Shop": {
    "rule": "at_night and 'Dodongos Cavern Clear'",
@@ -90,6 +90,10 @@
   "Lake Hylia -> Water Temple Lobby": {
    "rule": "is_adult and Hookshot and (Iron_Boots or (Longshot and (Progressive_Scale, 2) and 'King Zora Thawed'))",
    "why": "The gate switch of the lake (HyruleField_LakeHylia_Common_Prefab_6a9d) only reacts while the Iron Boots are worn. Without them the gate only opens by itself once SageOfWater reaches Step05 (King Zora thawed, or the Serenade in the Ice Cavern): diving with the Golden Scale is not enough before that."
+  },
+  "SFM Entryway -> SFM Wolfos Grotto": {
+   "rule": "can_open_storm_grotto",
+   "why": "The remake hides the Wolfos grotto under a cover the Song of Storms lifts (Discord 16/11), not under a bombable rock as in the base world."
   }
  },
  "events": {
@@ -140,6 +144,16 @@
     "rule": "'Kakariko Village Gate Open' and (complete_mask_quest or at('Kakariko Village', is_child))",
     "why": "The mask shop opens on the Kakariko gate flag (Npc_Hylia_Soldier_003_GateOpen in Market_Child modules and DisplayShop), not on Zelda's Letter held."
    }
+  }
+ },
+ "location_vanilla": {
+  "DMT Great Fairy Reward": {
+   "item": "Dins Fire",
+   "why": "The remake swaps two fountains: the Death Mountain Trail fairy plays Dm_FairyFountain_Din (map icon HavePlayedEvent.Dm_FairyFountain_Din), not the magic meter."
+  },
+  "HC Great Fairy Reward": {
+   "item": "Magic Meter",
+   "why": "Same swap: the Hyrule Castle fairy plays Dm_FairyFountain_Power (magic meter), not Din's Fire."
   }
  },
  "location_regions": {

@@ -110,7 +110,14 @@ NPC_GIFTS = (
 # Never shuffled, whatever the options (documented exclusions).
 EXCLUDED_NPC_LOCATIONS = ('DMT Biggoron', 'Kak Anju as Adult', 'GC Medigoron', 'Wasteland Bombchu Salesman',
                           'ZR Magic Bean Salesman', 'HC Malon Egg', 'HC Zeldas Letter', 'HF Ocarina of Time Item',
-                          'LH Underwater Item', 'Hideout Gerudo Membership Card', 'LH Sun')
+                          'Hideout Gerudo Membership Card', 'LH Sun')
+# Ruto's Letter: the bottle Link fishes out of Lake Hylia is a placed pickup of the
+# child Hyrule Field map (``Obj_Bottle_Letter``, its AP location below). It is a
+# story reward (``quest``): the generic get sequence (``Dm_SY_Get``) sets
+# ``Get_StoneOfWater_GetRutoLetter`` from the pouch actor's tag, whatever gives the
+# letter, and a derived pickup keeps ``Item_Bottle_Letter`` as its pouch actor.
+LETTER_ACTOR = 'Obj_Bottle_Letter'
+LETTER_LOCATION = 'LH Underwater Item'
 # Cutscene rewards: (source, AP locations, guards, ((event file stem, event, vanilla actor), ...)).
 # Every site of one reward gets the same item: the visible "get" box and, when
 # the cutscene adds the item silently first (ocarinas), that pouch addition too.
@@ -126,11 +133,14 @@ EVENT_GIFTS = (
     ('boss', ('Bongo Bongo',), (), (('Dm_Awake_Shadow_Get', 'Event3', 'Item_Medal_Shadow'),)),
     ('boss', ('Twinrova',), (), (('Dm_Awake_Spirit_Get', 'Event14', 'Item_Medal_Spirit'),)),
     ('boss', ('Links Pocket',), (), (('Dm_SageRoom_0005', 'Event48', 'Item_Medal_Light'),)),
-    # Great fairies.
-    ('fairy', ('HC Great Fairy Reward',), (), (('Dm_FairyFountain_Din', 'Event212', 'Item_DinFire'),)),
+    # Great fairies. The remake swaps two fountains of the original game: the
+    # Death Mountain Trail fairy gives Din's Fire and the Hyrule Castle one the
+    # magic meter (map icons: DeathMountainTrail → HavePlayedEvent.Dm_FairyFountain_Din,
+    # HyruleCastle → HavePlayedEvent.Dm_FairyFountain_Power).
+    ('fairy', ('DMT Great Fairy Reward',), (), (('Dm_FairyFountain_Din', 'Event212', 'Item_DinFire'),)),
     ('fairy', ('ZF Great Fairy Reward',), (), (('Dm_FairyFountain_Frore', 'Event174', 'Item_FaroreWind'),)),
     ('fairy', ('Colossus Great Fairy Reward',), (), (('Dm_FairyFountain_Nayru', 'Event163', 'Item_NayruLove'),)),
-    ('fairy', ('DMT Great Fairy Reward',), (), (('Dm_FairyFountain_Power', 'Event141', 'Item_FairyBless_MP'),)),
+    ('fairy', ('HC Great Fairy Reward',), (), (('Dm_FairyFountain_Power', 'Event141', 'Item_FairyBless_MP'),)),
     ('fairy', ('DMC Great Fairy Reward',), (), (('Dm_FairyFountain_Wisdom', 'Event144', 'Item_FairyBless_MPDouble'),)),
     ('fairy', ('OGC Great Fairy Reward',), (), (('Dm_FairyFountain_Courage', 'Event144',
                                                  'Item_FairyBless_DefenseDouble'),)),
@@ -233,6 +243,13 @@ def scan_map_sources(maps, instance_param=None, world_respawn=None):
                     {'resource': path, 'index': index, 'field': 'Drop__DropActor', 'before': before}, ident)
                 if before is not None:
                     entries[f'{folder}#gs#{ident}']['reason'] = 'existing_drop'
+            elif name == LETTER_ACTOR:
+                gid = f'{folder}#letter#{ident}'
+                add('quest', 'world', gid, folder, name, 'Rutos Letter',
+                    {'resource': path, 'index': index, 'field': 'Gyaml', 'before': name}, ident)
+                entries[gid].update(kind='exact', ap=[LETTER_LOCATION])
+                if 'Presence' in actor:
+                    entries[gid]['reason'] = 'conditional_presence'
             elif name == 'Obj_Heart_Container':
                 gid = f'{folder}#heart#{ident}'
                 add('bossheart', 'world', gid, folder, name, 'Heart Container',
@@ -499,5 +516,8 @@ def collect(nup, dictionaries, members, maps):
 def scan_world(nup, dictionaries, members, progress=None):
     """Maps, chest groups, enemies and the other reward sources."""
     from oot_rando.game.remake_world import scan_maps
+    from oot_rando.game.check_names import label_entries
     maps, groups, enemies = scan_maps(nup, dictionaries, members, progress)
-    return maps, groups, enemies, collect(nup, dictionaries, members, maps)
+    extra = collect(nup, dictionaries, members, maps)
+    label_entries(maps, groups, extra)   # readable check names (game/check_names.py)
+    return maps, groups, enemies, extra
