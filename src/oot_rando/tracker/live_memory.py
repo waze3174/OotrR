@@ -29,8 +29,8 @@ The only write is ``LiveGameData.set_bool`` (the Archipelago
 client's reception signal, ``patching.ap_mailbox``): one value byte, as the cheat menu does.
 
 Process access: ``ProcessMemory`` (Windows: ReadProcessMemory / WriteProcessMemory) or
-``LinuxProcessMemory`` (``/proc/<pid>/mem``, a native Linux emulator such as Ryuchii's Linux
-build); :func:`process_memory` picks the system's. Both list the process's regions and hand
+``LinuxProcessMemory`` (a native Linux emulator such as Ryuchii's Linux build: its guest memory
+file, else ``/proc/<pid>/mem``); :func:`process_memory` picks the system's. Both list the process's regions and hand
 them to the same :func:`emulator_layout`. A Windows copy of this application under
 Wine/Proton cannot read a native Linux process.
 """
@@ -342,6 +342,62 @@ def readable_regions(rows):
             and not (path.startswith('/dev/') and not path.startswith('/dev/shm/'))]
 
 
+MEMFD_NAME = '/memfd:HostMemory'   # the yuzu-family emulators' guest memory file (memfd_create)
+
+
+def is_guest_memfd(path):
+    """True for the link name or maps path of an emulator's guest memory file (pure)."""
+    return path in (MEMFD_NAME, MEMFD_NAME + ' (deleted)')
+
+
+def memfd_mappings(text):
+    """(start, size, file offset, inode) of each /proc/<pid>/maps row of a guest memory file,
+    whatever its protection (pure)."""
+    rows = []
+    for line in text.splitlines():
+        fields = line.split(None, 5)
+        if len(fields) < 6 or not is_guest_memfd(fields[5].strip()):
+            continue
+        try:
+            start, end = (int(value, 16) for value in fields[0].split('-', 1))
+            rows.append((start, end - start, int(fields[2], 16), int(fields[4])))
+        except ValueError:
+            continue
+    return rows
+
+
+class MemfdWindows:
+    """Host addresses to offsets in the guest memory file, from its mappings (pure).
+
+    Mappings that continue each other in both the address space and the file are joined; the
+    emulator changes page protections often, never which file page an address shows.
+    """
+    def __init__(self, mappings):
+        self.windows = []
+        for start, size, offset, _ in sorted(mappings):
+            last = self.windows[-1] if self.windows else None
+            if last and last[0] + last[1] == start and last[2] + last[1] == offset:
+                self.windows[-1] = (last[0], last[1] + size, last[2])
+            else:
+                self.windows.append((start, size, offset))
+        self.starts = [window[0] for window in self.windows]
+
+    def pieces(self, host, size):
+        """[(file offset, length)] covering host..host+size, or None when part of it is not in the file."""
+        result = []
+        while size > 0:
+            index = bisect.bisect_right(self.starts, host) - 1
+            if index < 0:
+                return None
+            start, length, offset = self.windows[index]
+            if host >= start + length:
+                return None
+            part = min(size, start + length - host)
+            result.append((offset + host - start, part))
+            host, size = host + part, size - part
+        return result
+
+
 def exe_link_name(target):
     """Name of the /proc/<pid>/exe target; an executable replaced on disk ends in ' (deleted)' (pure)."""
     if target.endswith(' (deleted)'):
@@ -406,27 +462,50 @@ def denied_message(scope):
 
 
 class LinuxProcessMemory:
-    """``/proc/<pid>/mem`` of a native Linux emulator that has the game loaded (same interface as
+    """Memory of a native Linux emulator that has the game loaded (same interface as
     :class:`ProcessMemory`).
 
-    /proc/<pid>/mem rather than process_vm_readv: plain os.pread/os.pwrite (no libc through
-    ctypes), the permission check happens once when the file is opened, and a read crossing an
-    unmapped page just comes back short.
+    First the emulator's guest memory file (``/memfd:HostMemory``), opened again through
+    ``/proc/<pid>/fd`` and read at the offsets ``/proc/<pid>/maps`` gives: both need only read
+    access to the process, which kernel.yama.ptrace_scope 1 (SteamOS, Ubuntu) allows. Else
+    ``/proc/<pid>/mem``, which needs ptrace access.
+
+    Plain os.pread/os.pwrite (no libc through ctypes): the permission check happens once when the
+    file is opened, and a read past the data just comes back short.
     """
     def __init__(self, proc='/proc'):
         self.proc, self.fd, self.pid, self.next_scan = proc, None, None, 0.0
         self.base, self.slot = HOST_BASE, GAMEDATA_SLOT
         self.failure = 'game not running'   # the last scan's answer, repeated until the next scan
+        self.windows, self.memfd, self.inode, self.next_maps = None, None, None, 0.0   # memory file only
 
     def _open(self, pid, flags):
         return os.open(os.path.join(self.proc, str(pid), 'mem'), flags)
 
-    def _regions(self, pid):
+    def _maps(self, pid):
         try:
-            text = Path(self.proc, str(pid), 'maps').read_text(encoding='utf-8', errors='replace')
+            return Path(self.proc, str(pid), 'maps').read_text(encoding='utf-8', errors='replace')
+        except OSError:
+            return ''
+
+    def _regions(self, pid):
+        return readable_regions(parse_maps(self._maps(pid)))
+
+    def _guest_memfds(self, pid):
+        """``/proc/<pid>/fd`` entries of the process's guest memory files, found by link name."""
+        folder = os.path.join(self.proc, str(pid), 'fd')
+        try:
+            entries = sorted((entry for entry in os.listdir(folder) if entry.isdigit()), key=int)
         except OSError:
             return []
-        return readable_regions(parse_maps(text))
+        paths = []
+        for entry in entries:
+            try:
+                if is_guest_memfd(os.readlink(os.path.join(folder, entry))):
+                    paths.append(os.path.join(folder, entry))
+            except OSError:
+                continue
+        return paths
 
     @staticmethod
     def _read(fd, host, size):
@@ -435,6 +514,53 @@ class LinuxProcessMemory:
         except (OSError, OverflowError):
             return None
         return data if len(data) == size else None
+
+    @staticmethod
+    def _read_file(fd, windows, host, size):
+        pieces = windows.pieces(host, size)
+        if pieces is None:
+            return None
+        data = b''
+        for offset, length in pieces:
+            try:
+                part = os.pread(fd, length, offset)
+            except (OSError, OverflowError):
+                return None
+            if len(part) != length:
+                return None
+            data += part
+        return data
+
+    def _attach_memfd(self, pid):
+        """(fd, path, inode, windows, layout) through a guest memory file of ``pid``, or None."""
+        text = self._maps(pid)
+        for path in self._guest_memfds(pid):
+            try:
+                fd = os.open(path, os.O_RDONLY)
+            except OSError:
+                continue
+            inode = os.fstat(fd).st_ino
+            mappings = [row for row in memfd_mappings(text) if row[3] == inode]
+            windows = MemfdWindows(mappings)
+            regions = [(start, size, MEM_COMMIT) for start, size, _, _ in mappings]
+            layout = emulator_layout(regions, lambda host, size: self._read_file(fd, windows, host, size))
+            if layout:
+                return fd, path, inode, windows, layout
+            os.close(fd)
+        return None
+
+    def _read_attached(self, host, size):
+        if self.fd is None:
+            return None
+        if self.windows is None:
+            return self._read(self.fd, host, size)
+        data = self._read_file(self.fd, self.windows, host, size)
+        if data is None and time.monotonic() >= self.next_maps:
+            # the game may have mapped more memory since: read the mappings again, at most once a second
+            self.next_maps = time.monotonic() + 1
+            self.windows = MemfdWindows([row for row in memfd_mappings(self._maps(self.pid)) if row[3] == self.inode])
+            data = self._read_file(self.fd, self.windows, host, size)
+        return data
 
     def attach(self):
         if self.fd is not None:
@@ -447,6 +573,11 @@ class LinuxProcessMemory:
         self.next_scan = now + 5   # same pace as the Windows scan
         denied = False
         for pid in linux_emulator_pids(emulator_exes(), self.proc, os.getpid()):
+            found = self._attach_memfd(pid)
+            if found:
+                self.fd, self.memfd, self.inode, self.windows, (self.base, self.slot) = found
+                self.pid = pid
+                return
             try:
                 fd = self._open(pid, os.O_RDONLY)
             except PermissionError:
@@ -464,13 +595,16 @@ class LinuxProcessMemory:
         raise LiveUnavailable(self.failure)
 
     def read(self, guest, size):
-        data = self._read(self.fd, self.base + guest, size) if self.fd is not None else None
+        data = self._read_attached(self.base + guest, size)
         if data is None:
             raise LiveUnavailable(f'cannot read at {guest:#x}')
         return data
 
     def write(self, guest, data):
         """pwrite through a file opened for this write only."""
+        if self.windows is not None:
+            self._write_file(guest, data)
+            return
         try:
             fd = self._open(self.pid, os.O_RDWR)
         except PermissionError:
@@ -486,6 +620,27 @@ class LinuxProcessMemory:
         if done != len(data):
             raise LiveUnavailable(f'cannot write at {guest:#x}')
 
+    def _write_file(self, guest, data):
+        pieces = self.windows.pieces(self.base + guest, len(data))
+        if pieces is None:
+            raise LiveUnavailable(f'cannot write at {guest:#x}')
+        try:
+            fd = os.open(self.memfd, os.O_RDWR)
+        except OSError:
+            raise LiveUnavailable('cannot open the game for writing') from None
+        done = 0
+        try:
+            for offset, length in pieces:
+                if os.pwrite(fd, data[done:done + length], offset) != length:
+                    break
+                done += length
+        except (OSError, OverflowError):
+            pass
+        finally:
+            os.close(fd)
+        if done != len(data):
+            raise LiveUnavailable(f'cannot write at {guest:#x}')
+
     def close(self):
         if self.fd is not None:
             try:
@@ -493,6 +648,7 @@ class LinuxProcessMemory:
             except OSError:
                 pass
         self.fd, self.pid = None, None
+        self.windows, self.memfd, self.inode = None, None, None
 
 
 class NoProcessMemory:

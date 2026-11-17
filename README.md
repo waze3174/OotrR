@@ -83,11 +83,14 @@ through Proton or Wine cannot read a native Linux process. Another fork can be a
 by its executable name in **Setup → Other emulator executables** (on Linux, with or
 without `.exe`).
 
-On Linux, the kernel setting `kernel.yama.ptrace_scope` decides whether one program
-may read another's memory. With 1 (only a parent process may), the emulator has to
-allow it (`prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY)`) or the setting has to be 0;
-the Tracker tab names the value when Linux refuses. The application never changes
-it.
+On Linux, the yuzu-family emulators keep the game's memory in a file
+(`/memfd:HostMemory`). The application reads it through `/proc/<pid>/fd` at the
+offsets `/proc/<pid>/maps` gives. That only needs the same user as the emulator, so
+it also works with `kernel.yama.ptrace_scope` at 1 (SteamOS, Ubuntu). For an
+emulator without that file it reads `/proc/<pid>/mem`, which `ptrace_scope` 1 allows
+only when the emulator allows it (`prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY)`) or the
+setting is 0; the Tracker tab names the value when Linux refuses. The application
+never changes it.
 
 The **in-game overlay** (Windows, Hookshot) shows the item grid plus the soul and
 check counts over the game window; toggle it with **Ctrl + Shift + O**.
