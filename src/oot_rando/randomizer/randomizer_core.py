@@ -496,8 +496,8 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             # Zelda's escape on the Goron Ruby and the Zora Sapphire, checked at every item get.
             extra_raw[ACTION_GUIDE_FLOW], story['zelda_escape_item_get'] = story_fixes.zelda_escape_on_item_get(
                 extra_raw[ACTION_GUIDE_FLOW])
-            # The clock runs before Zelda (Impa's send-off flag set at the start).
-            story['clock'] = story_fixes.CLOCK_FLAG
+            # The clock runs from the start (Impa's send-off and Kaepora's arrival flags set).
+            story['clock'] = list(story_fixes.CLOCK_FLAGS)
             # Zones open from the start, kept open (patching/world_openings.py).
             from oot_rando.patching.world_openings import OPENINGS, apply_openings
             options = full.get('options') or {}
