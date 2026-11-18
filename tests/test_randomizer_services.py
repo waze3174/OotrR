@@ -34,6 +34,40 @@ class ServiceTests(unittest.TestCase):
         (root / 'romfs').mkdir()
         return root / 'mods'
 
+    def test_previous_generator_seed_still_opens_without_changing_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for version in ('0.9.0', '0.10.0'):
+                with self.subTest(version=version):
+                    root = self.make_artifact(Path(directory) / version, 'same-settings')
+                    path = root / 'manifest.json'
+                    manifest = json.loads(path.read_text(encoding='utf-8'))
+                    old_identity = settings_identity(Settings('same-settings'), version, ADAPTER_VERSION)
+                    self.assertNotEqual(old_identity, manifest['seed_id'])
+                    manifest.update(generator_version=version, seed_id=old_identity)
+                    path.write_text(json.dumps(manifest), encoding='utf-8')
+                    (root / 'checks.json').write_text(json.dumps({'seed_id': old_identity, 'checks': []}), encoding='utf-8')
+                    self.assertEqual(read_artifact(root)[0]['seed_id'], old_identity)
+
+    def test_stable_full_seed_identity_uses_its_historical_option_defaults(self):
+        from oot_rando.logic import rando_options
+        with tempfile.TemporaryDirectory() as directory:
+            for version in ('0.9.0', '0.10.0'):
+                with self.subTest(version=version):
+                    root = self.make_artifact(Path(directory) / version, 'historical-full')
+                    path = root / 'manifest.json'
+                    manifest = json.loads(path.read_text(encoding='utf-8'))
+                    historical = rando_options.defaults()
+                    for name in ('key_rings_list', 'open_gerudo_valley_bridge', 'shuffle_trees'):
+                        historical.pop(name)
+                    manifest['settings'].update(randomize_chests=False, full=historical)
+                    identity = hashlib.sha256(json.dumps(
+                        {'generator': version, 'adapter': ADAPTER_VERSION, 'settings': manifest['settings']},
+                        ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+                    manifest.update(generator_version=version, seed_id=identity)
+                    path.write_text(json.dumps(manifest), encoding='utf-8')
+                    (root / 'checks.json').write_text(json.dumps({'seed_id': identity, 'checks': []}), encoding='utf-8')
+                    self.assertEqual(read_artifact(root)[0]['seed_id'], identity)
+
     def test_mod_target_accepts_hookshot_and_emulator_but_rejects_original_romfs(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
