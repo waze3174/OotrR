@@ -35,7 +35,7 @@ from oot_rando.formats.byml_writer import lift_actors, patch_strings
 from oot_rando.logic import rando_options
 from oot_rando.tracker import ingame_bundle, ingame_icons
 
-GENERATOR_VERSION = '0.11.1'
+GENERATOR_VERSION = '0.11.0'
 ADAPTER_VERSION = 'ap-glitchless-v5'   # v5: progressive tokens (every copy gives the next level)
 ADULT_MAP = MAP.replace('_Child_', '_Adult_')
 STARTING_ITEMS = ('Item_BulletBag_Small', 'Item_Quiver_Small')
