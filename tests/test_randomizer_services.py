@@ -57,7 +57,7 @@ class ServiceTests(unittest.TestCase):
                     path = root / 'manifest.json'
                     manifest = json.loads(path.read_text(encoding='utf-8'))
                     historical = rando_options.defaults()
-                    for name in ('key_rings_list', 'open_gerudo_valley_bridge', 'shuffle_trees'):
+                    for name in ('key_rings_list', 'open_gerudo_valley_bridge', 'shuffle_trees', 'shuffle_master_sword'):
                         historical.pop(name)
                     manifest['settings'].update(randomize_chests=False, full=historical)
                     identity = hashlib.sha256(json.dumps(

@@ -12,8 +12,15 @@ opens the get window of an actor ("You learned Saria's Song!", with its caption)
 without any pose; Saria's Fairy Ocarina gift uses it after a silent add. Every
 shuffled song is given that way, so nothing appears in Link's hands:
 
-* at a song location: the teaching calls become a one-frame wait (no wrong melody
-  taught or added), the silent add gives the placed item, then its get window;
+* at every song location (songs shuffled or not): the NPC's example
+  (``LearningOcarinaPlayExample``) only sets the melody to play, without the NPC
+  playing it; the player's play-back (``LearningOcarinaFollowExample``) stays: Link's
+  tune at the end (Sheik's duet for the warp songs) plays the notes just input, it
+  stays silent without them (tested 19/11). A location keeping its own
+  song keeps the vanilla end, which adds the melody; a location given another item
+  plays it without the melody being added (``LearningOcarinaPlayAuto*`` → the
+  ``Rando*`` entries of :func:`add_teaching_entries`), the silent add gives the
+  placed item, then its get window;
 * at another cutscene source (dungeon reward, great fairy, story reward): the give
   call becomes the silent add, followed by the get window. A pose-based get
   (``Dm_SY_GetInEvent/*``) is replaced the same way;
@@ -65,6 +72,22 @@ TRIGGER_QUERIES = {
 }
 TEACHING_FLOW = 'Dm_SY_Ocarina'
 TEACHING_PREFIX = 'LearningOcarina'
+TEACHING_FLOW_PATH = 'Event/EventFlow/Dm_SY_Ocarina.bfevfl.zs'
+# Teaching calls → entries of ours: the example to memorise goes, the player's
+# play-back (TEACHING_KEPT) and Link's tune stay (user reports 19/11), no melody is
+# added. Any other teaching call becomes a one-frame wait. ``teaching`` op values: True (another item
+# is placed: every call of TEACHING_REPLACED) or KEEP_ADD (the song stays: only the
+# minigame is replaced, the vanilla end adds the melody).
+KEEP_ADD = 'keep_add'
+TEACHING_KEEP_ADD = ('LearningOcarinaPlayAuto', 'LearningOcarinaPlayAutoForSeek')
+TEACHING_KEPT = ('LearningOcarinaFollowExample',)
+TEACHING_REPLACED = {
+    'LearningOcarinaPlayExample': 'RandoLearningPrepare',
+    'LearningOcarinaPlayAuto': 'RandoLearningPlayAuto',
+    'LearningOcarinaPlayAutoForSeek': 'RandoLearningPlayAutoForSeek',
+}
+# Frames LearningOcarinaPlayAuto waits per melody type for Link's tune to end.
+PLAY_AUTO_WAITS = {0: 330, 1: 270, 2: 250, 3: 150, 4: 380, 5: 180, 12: 60}
 GET_FLOW = 'GetPouchContent'
 SILENT_ENTRY = 'GetPouchContentByActorName'
 DISPLAY_ENTRY = 'DisplayGetByActorName'
@@ -76,7 +99,11 @@ TEXT_ONLY_SOURCES = ('song', 'boss', 'fairy', 'quest')
 # (``qol_patches.GIFT_AFTER_CUTSCENE``, pilot): never a song there.
 POSE_AFTER_CUTSCENE = ('Queen Gohma',)
 WAIT_PARAMS = {'IsWaitEnd': True, 'Frames': 1}
-SHUFFLE_MODES = ('shuffled', 'dungeon', 'any')
+SHUFFLE_MODES = ('shuffled', 'dungeon', 'any', 'everywhere')
+# "Everywhere": a song can also stand in a chest or be a pickup (freestanding spot,
+# pot, crate, gold skulltula...). Those gets show the song's actor in Link's hands,
+# so the songs get Sheik's harp as their model, in the song's colour (song_models).
+HELD_FORMS = ('chest', 'world')
 
 
 def is_song_actor(actor):
@@ -95,8 +122,9 @@ def location_flows(ap):
     raise ValueError('Not a song location: ' + ap)
 
 
-def song_allowed(mode, source, actor):
-    """Placement rule of the ``shuffle_song_items`` mode (``actor``: canonical reward actor)."""
+def song_allowed(mode, source, actor, form=None):
+    """Placement rule of the ``shuffle_song_items`` mode (``actor``: canonical reward actor,
+    ``form``: item form of the location, see ``item_forms``)."""
     song = is_song_actor(actor)
     if mode not in SHUFFLE_MODES:
         return not song and source != 'song'
@@ -106,6 +134,8 @@ def song_allowed(mode, source, actor):
         return True
     if mode == 'dungeon':
         return source in ('song', 'boss')
+    if mode == 'everywhere' and form in HELD_FORMS:
+        return True
     return source in TEXT_ONLY_SOURCES
 
 
@@ -128,8 +158,10 @@ def patch_flow(raw, ops):
 
     ``ops`` keys (all optional):
 
-    * ``teaching``: True → every ``Dm_SY_Ocarina/LearningOcarina*`` call becomes a
-      one-frame ``EventSystemActor.EventWait``;
+    * ``teaching``: True → the ``Dm_SY_Ocarina/LearningOcarina*`` calls of
+      :data:`TEACHING_REPLACED` call our entries instead (same parameters), any other
+      becomes a one-frame ``EventSystemActor.EventWait``; :data:`KEEP_ADD`: the same,
+      except the calls of :data:`TEACHING_KEEP_ADD`, left as they are;
     * ``neutralize``: event names turned into the same wait (a song flag write);
     * ``text_get``: ``[[event, actor, show], …]``: the give event becomes the silent
       ``GetPouchContent/GetPouchContentByActorName`` of ``actor`` (unless it already
@@ -169,12 +201,21 @@ def patch_flow(raw, ops):
         expected[event.name] = dict(WAIT_PARAMS)
 
     stripped = 0
-    if ops.get('teaching'):
+    teaching = ops.get('teaching')
+    if teaching not in (None, False, True, KEEP_ADD):
+        raise ValueError('Unknown song teaching mode.')
+    if teaching:
         for event in list(chart.events):
             data = event.data
             if (isinstance(data, SubFlowEvent) and data.res_flowchart_name == TEACHING_FLOW
                     and data.entry_point_name.startswith(TEACHING_PREFIX)):
-                to_wait(event)
+                if data.entry_point_name in TEACHING_KEPT or (
+                        teaching == KEEP_ADD and data.entry_point_name in TEACHING_KEEP_ADD):
+                    continue
+                if data.entry_point_name in TEACHING_REPLACED:
+                    data.entry_point_name = TEACHING_REPLACED[data.entry_point_name]
+                else:
+                    to_wait(event)
                 stripped += 1
         if not stripped:
             raise ValueError('No melody teaching found in the song flow.')
@@ -239,6 +280,77 @@ def patch_flow(raw, ops):
     return result
 
 
+def add_teaching_entries(raw):
+    """``Dm_SY_Ocarina`` with the entries the patched song cutscenes call (:data:`TEACHING_REPLACED`).
+
+    * ``RandoLearningPrepare`` (``MelodyType`` from the caller): the melody to play is
+      set as the example sets it, nobody plays it;
+    * ``RandoLearningPlayAuto``: Link plays the melody (``PlayAuto_MelodyGet``), waits as
+      ``LearningOcarinaPlayAuto`` does, then its light goes off; nothing added;
+    * ``RandoLearningPlayAutoForSeek``: the warp-song duet with Sheik, nothing added.
+    """
+    from evfl.common import Argument
+    from evfl.entry_point import EntryPoint
+    from evfl.event import SwitchEvent
+    from evfl.util import make_index, make_rindex
+    from oot_rando.patching.progressive import FlowEditor, link
+    editor = FlowEditor(raw, TEACHING_FLOW)
+    chart = editor.chart
+    entries = {e.name for e in chart.entry_points}
+    if set(TEACHING_REPLACED.values()) & entries:
+        raise ValueError('Teaching entries already added.')
+    for needed in ('PlayAuto_MelodyGet', 'LightOff_NoPalette', *TEACHING_REPLACED):
+        if needed not in entries:
+            raise ValueError('Dm_SY_Ocarina entry missing: ' + needed)
+
+    def entry(name, first, sub_flows=()):
+        point = EntryPoint(name)
+        point.main_event = make_index(first)
+        point._sub_flow_event_indices = [chart.events.index(e) for e in sub_flows]
+        chart.entry_points.append(point)
+
+    # The example, without the NPC playing it.
+    melody = editor.action('RandoTeach_SetMelody', 'GameSystemActor', 'EventTriggerPreparePlayExample',
+                           {'MelodyType': Argument('MelodyType')})   # the caller's, not a text
+    entry('RandoLearningPrepare', melody)
+    # Link's tune, nothing added.
+    play = editor.subflow('RandoTeach_PlayAuto', '', 'PlayAuto_MelodyGet', None)
+    light = editor.subflow('RandoTeach_LightOff', '', 'LightOff_NoPalette', None)
+    owner = editor.actor('GameSystemActor')
+    switch = SwitchEvent()
+    switch.actor = make_rindex(owner)
+    switch.actor_query = make_rindex(editor._holder(owner.queries, 'EventQueryMelodyTypeForNormal'))
+    chooser = editor._event('RandoTeach_Melody', switch, None)
+    cases = {}
+    for melody_type, frames in sorted(PLAY_AUTO_WAITS.items()):
+        wait = editor.action(f'RandoTeach_Wait{melody_type}', 'EventSystemActor', 'EventWait',
+                             {'IsWaitEnd': True, 'Frames': frames})
+        link(wait, light)
+        cases[melody_type] = make_index(wait)
+    switch.cases = cases
+    link(play, chooser)
+    entry('RandoLearningPlayAuto', play, (play, light))
+    # The warp songs' duet, nothing added.
+    close = editor.action('RandoTeach_SeekClose', 'GameSystemActor', 'EventCloseMessageDialog', {'IsWaitEnd': True})
+    pause = editor.action('RandoTeach_SeekWait', 'EventSystemActor', 'EventWait', {'IsWaitEnd': True, 'Frames': 30})
+    tune = editor.action('RandoTeach_SeekTune', 'GameSystemActor', 'EventTriggerPlayAutoFixedTune',
+                         {'IsLearningWarpMelodyDemo': True})
+    link(close, pause)
+    link(pause, tune)
+    entry('RandoLearningPlayAutoForSeek', close)
+    result, checked = editor.write('The song teaching entries')
+    written = {e.name: e for e in checked.flowchart.entry_points}
+    for name in TEACHING_REPLACED.values():
+        if name not in written:
+            raise ValueError('Teaching entry not written: ' + name)
+    adds = [e for e in checked.flowchart.events if e.name.startswith('RandoTeach_')
+            and getattr(getattr(e.data, 'actor_action', None), 'v', None) is not None
+            and e.data.actor_action.v.v == 'EventTriggerAddOrRemovePouchContent']
+    if adds:
+        raise ValueError('A teaching entry adds a melody.')
+    return result
+
+
 def site_kind(raw, event):
     """``'display'`` (text window call), ``'silent'`` or ``'other'`` for one give event."""
     from evfl.event import SubFlowEvent
@@ -269,6 +381,12 @@ def plan_song_flows(placements, tracking_flags, shuffled_mode, paths, kind=lambd
             flow_ops(variant['resource']).setdefault('text_get', []).append(
                 [variant['event'], after, not shown])
 
+    # Every song cutscene: no minigame, Link plays the melody himself (KEEP_ADD unless
+    # another item is placed there, below).
+    for ap, *_ in SONG_LOCATIONS:
+        for stem in location_flows(ap):
+            for path in paths(stem):
+                flow_ops(path)['teaching'] = KEEP_ADD
     for placement in placements:
         source, before, after = placement['source'], placement['before'], placement['after']
         if source == 'song':

@@ -136,6 +136,20 @@ class GameFlows(unittest.TestCase):
                 self.assertIn(s.GREAT_FAIRY_FLAG_PREFIX + name, queried)
                 self.assertFalse(queried & {'IsGet.' + a for _, _, a in s.GREAT_FAIRIES})
 
+    def test_great_fairy_reward_accepts_a_song_silent_add(self):
+        # A song on a Great Fairy: song_adapter's text_get turned her pose into a silent add.
+        name, reward, actor = s.GREAT_FAIRIES[0]
+        flow = s._Chart(self.read(s.fairy_flow(name)))
+        gift = flow.event(reward, 'SubFlowEvent')
+        gift.data.res_flowchart_name, gift.data.entry_point_name = 'GetPouchContent', 'GetPouchContentByActorName'
+        gift.data.params.data = {'ActorName': 'Item_Melody_StormSong'}
+        flow.expected[reward] = {'ActorName': 'Item_Melody_StormSong'}
+        source, _ = flow.write()
+        raw, _ = s._fairy_reward_flag(name, reward, actor)(source)
+        events = self.chart(raw)
+        self.assertEqual(events['RandoGreatFairyGiven'].data.nxt.v.name, reward)
+        self.assertEqual(events[reward].data.entry_point_name, 'GetPouchContentByActorName')
+
     def test_great_fairy_flags_unique(self):
         self.assertEqual(len(s.great_fairy_saved_flags()), 6)
 
@@ -167,6 +181,81 @@ class GameFlows(unittest.TestCase):
         self.assertEqual(report['before'], s.PEDESTAL_BEFORE)
         with self.assertRaises(ValueError):    # never applied twice
             s.pedestal_after_first_adult_arrival(patched)
+
+    def test_prelude_requires_forest_medallion_and_preserves_native_one_shot(self):
+        import ainb
+        import copy
+        raw = self.nup.read(self.nup.latest('romfs/' + s.PRELUDE_MODULE))
+        patched, report = s.prelude_on_forest_medallion(raw)
+        before = ainb.AINB.from_binary(raw).as_dict()
+        after = ainb.AINB.from_binary(patched).as_dict()
+        expected = copy.deepcopy(before)
+        node = expected['Nodes'][3]
+        node['Name'] = 'HoldGameDataGetBoolSimple'
+        node['Parameters']['Inputs']['String'][0].update(
+            {'Name': 'GameDataNameBool', 'Default Value': s.PRELUDE_MEDAL})
+        node['Parameters']['Inputs']['Int'] = [{'Name': 'GameDataArrayIndex', 'Default Value': -1,
+            'Node Index': -1, 'Output Index': 0, 'Flags': ['Uses Default', 'Is Output']}]
+        self.assertEqual(after, expected)
+        self.assertEqual(report['medallion'], s.PRELUDE_MEDAL)
+        # Native area disappears after teaching, regardless of the shuffled song.
+        root = Byml(self.read(s.TEMPLE_MAP)).root
+        area = next(a for a in root['Actors'] if a['Hash'] == 3406708549665898725)
+        self.assertEqual(area['Presence'], {'FlagName': 'Market_Adult_GetLightPrelude',
+                                          'IsCheckLazy': False, 'IsNegation': True})
+        with self.assertRaises(ValueError):
+            s.prelude_on_forest_medallion(patched)
+
+    def test_prelude_does_not_roll_back_later_sages(self):
+        raw = self.read('Event/EventFlow/AllSage.bfevfl.zs')
+        patched, report = s.prelude_keeps_later_sage_progress(raw)
+        events = self.chart(patched)
+        gate = events['Event37'].data.nxt.v
+        self.assertEqual(gate.data.params.data, {'GameDataName': s.PRELUDE_LATER_STEP})
+        self.assertNotIn(0, gate.data.cases)     # later progress: finish after teaching
+        self.assertIs(gate.data.cases[1].v, events['Event34'])
+        self.assertEqual(report['rollback'], 'Event34')
+        with self.assertRaises(ValueError):
+            s.prelude_keeps_later_sage_progress(patched)
+
+    def test_light_arrows_require_both_medallions_and_only_play_once(self):
+        import ainb
+        import itertools
+        raw = self.nup.read(self.nup.latest('romfs/' + s.LIGHT_ARROWS_MODULE))
+        patched, report = s.light_arrows_on_medallions(raw)
+        nodes = ainb.AINB.from_binary(patched).as_dict()['Nodes']
+        self.assertEqual(nodes[8]['Plugs']['Generic'], [{'Node Index': 5, 'Name': 'BoolMulti'}])
+
+        def evaluate(index, output, flags, touching):
+            node = nodes[index]
+            if node['Name'] == 'HoldGameDataGetBoolSimple':
+                return flags[node['Parameters']['Inputs']['String'][0]['Default Value']]
+            if node['Name'] == 'HoldActorObserverBySensorHitInfo':
+                return touching
+            if node['Name'] == 'InvBool.module':
+                return not evaluate(2, 0, flags, touching)
+            if node['Name'] == 'OperateAND':
+                sources = node['Parameters']['Inputs']['Bool'][0]['Sources']
+                value = all(evaluate(p['Node Index'], p['Output Index'], flags, touching) for p in sources)
+                return value if output == 1 else not value
+            raise AssertionError(node['Name'])
+
+        for shadow, spirit, played, touching in itertools.product((False, True), repeat=4):
+            flags = dict(zip((*s.LIGHT_ARROWS_MEDALS, s.LIGHT_ARROWS_PLAYED), (shadow, spirit, played)))
+            with self.subTest(flags=flags, touching=touching):
+                area = next(p for p in nodes[1]['Parameters']['Inputs']['Bool'] if p['Name'] == 'Logic_Create')
+                request = next(p for p in nodes[0]['Parameters']['Inputs']['Bool'] if p['Name'] == 'EventRequestTrigger')
+                self.assertEqual(evaluate(area['Node Index'], area['Output Index'], flags, touching),
+                                 shadow and spirit and not played)
+                self.assertEqual(evaluate(request['Node Index'], request['Output Index'], flags, touching),
+                                 shadow and spirit and not played and touching)
+        self.assertEqual(report['medallions'], list(s.LIGHT_ARROWS_MEDALS))
+        # Geometry, event binding and collision test are untouched.
+        before = ainb.AINB.from_binary(raw).as_dict()['Nodes']
+        for index in (0, 3):
+            self.assertEqual(before[index], nodes[index])
+        with self.assertRaises(ValueError):
+            s.light_arrows_on_medallions(patched)
 
     def test_zelda_escape_on_stones_at_item_get(self):
         from oot_rando.patching.qol_patches import ocarina_guide_on_get
@@ -329,6 +418,27 @@ class GameFlows(unittest.TestCase):
         with self.assertRaises(ValueError):
             s.kokiri_exit_guard_steps_aside(raw)
 
+    def test_link_goron_gives_tunic_outside_his_quest_step(self):
+        # 19/11: the tunic only came at SageOfFire TalkDaruniaJr: never after the crater
+        # (Bolero) moved the quest on, nor before Dodongo's Cavern.
+        from oot_rando.patching.event_patch import _flow
+        source = self.read(s.LINK_GORON_FLOW)
+        raw, report = s.link_goron_gives_tunic(source)
+        flow = _flow(raw).flowchart
+        entry = {e.name: e for e in flow.entry_points}[s.LINK_GORON_TALK]
+        has = entry.main_event.v
+        self.assertEqual(dict(has.data.params.data), {'Actor': s.GORON_TUNIC, 'Num': 1})
+        give = has.data.cases[1].v
+        self.assertEqual((give.data.res_flowchart_name, give.data.entry_point_name),
+                         ('Dm_SY_GetInEvent', 'GetInEvent_NotTurn_NotNpc'))
+        self.assertEqual(give.data.params.data['ActorName'], s.GORON_TUNIC_GIFT)
+        self.assertEqual((has.data.cases[0].v.name, give.data.nxt.v.name), ('Event99', 'Event99'))
+        self.assertIn(flow.events.index(give), entry._sub_flow_event_indices)
+        self.assertEqual(report['gift'], 'Obj_Armor_Goron')
+        self.check_kept(source, raw)
+        with self.assertRaises(ValueError):
+            s.link_goron_gives_tunic(raw)
+
     def steps(self):
         from oot_rando.patching.quest_guard import CHALLENGES, challenge_steps
         return challenge_steps(self.read(CHALLENGES))
@@ -400,10 +510,11 @@ class GameFlows(unittest.TestCase):
         bools = {e['Hash'] for e in data['Bool']}
         exps = {e['Hash'] for e in data['BoolExp']}
         stone_flags = tuple(s.STONE_FLAG_PREFIX + stone for stone in s.STONES)
-        for name in (s.DARUNIA_GIFT_PLAYED, s.TALON_AWAKE, s.SECOND_MALON, s.BRIDGE_CLOSED) + s.CLOCK_FLAGS + stone_flags:
+        for name in ((s.DARUNIA_GIFT_PLAYED, s.TALON_AWAKE, s.SECOND_MALON, s.BRIDGE_CLOSED) + s.CLOCK_FLAGS
+                     + (s.LIGHT_ARROWS_PLAYED, s.PRELUDE_MEDAL) + stone_flags + s.LIGHT_ARROWS_MEDALS):
             self.assertIn(murmur3(name), bools, name)
         for name in (s.AFTER_SARIA_PLAY, s.SHEIK_PRESENCE, s.DOOR_STARTED, s.DOOR_BEFORE_ESCAPE,
-                     s.FIRE_QUEST_STARTED, s.DOOR_PAST_SREP):
+                     s.FIRE_QUEST_STARTED, s.DOOR_PAST_SREP, s.PRELUDE_LATER_STEP):
             self.assertIn(murmur3(name), exps, name)
 
 

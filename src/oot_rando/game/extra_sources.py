@@ -32,7 +32,8 @@ from collections import defaultdict
 
 from oot_rando.game.item_forms import WORLD_CANONICAL
 from oot_rando.game.randomizer_categories import candidate_category
-from oot_rando.game.remake_world import FOLDER_AREAS, FOLDER_DUNGEON, actor_item, map_age
+from oot_rando.game.remake_world import (FOLDER_AREAS, FOLDER_DUNGEON, actor_item, map_age,
+                                        inaccessible_child_actor)
 
 GIVE_PARAMS = ('ActorName', 'ReveiveItem', 'ReceiveItem', 'TakenRewardActor', 'Actor')
 ENVIRONMENT = ('pots', 'bushes', 'rocks', 'crates', 'beehives', 'trees')
@@ -137,7 +138,7 @@ NPC_GIFTS = (
 # Never shuffled, whatever the options (documented exclusions).
 EXCLUDED_NPC_LOCATIONS = ('DMT Biggoron', 'Kak Anju as Adult', 'GC Medigoron', 'Wasteland Bombchu Salesman',
                           'ZR Magic Bean Salesman', 'HC Malon Egg', 'HC Zeldas Letter', 'HF Ocarina of Time Item',
-                          'Hideout Gerudo Membership Card', 'LH Sun')
+                          'LH Sun')
 # Ruto's Letter: the bottle Link fishes out of Lake Hylia is a placed pickup of the
 # child Hyrule Field map (``Obj_Bottle_Letter``, its AP location below). It is a
 # story reward (``quest``): the generic get sequence (``Dm_SY_Get``) sets
@@ -149,6 +150,10 @@ LETTER_LOCATION = 'LH Underwater Item'
 # Every site of one reward gets the same item: the visible "get" box and, when
 # the cutscene adds the item silently first (ocarinas), that pouch addition too.
 EVENT_GIFTS = (
+    ('master_sword', ('ToT Master Sword',), (),
+     (('DoorOfTime', 'Event115', 'Weapon_Sword_Master'),)),
+    ('gerudo_card', ('Hideout Gerudo Membership Card',), (),
+     (('Dm_Gerudo_0025', 'Event294', 'Item_Token_Gerudo'),)),
     # Dungeon rewards, given after the boss (Deku Tree, Darunia, Ruto, sages, Rauru).
     ('boss', ('Queen Gohma',), (), (('Dm_Kokiri_0130', 'Event22', 'Item_Stone_Forest'),)),
     ('boss', ('King Dodongo',), (), (('Dm_DeathMtTrail_0025', 'Event26', 'Item_Stone_Fire'),)),
@@ -210,7 +215,7 @@ SCRUB_LOW_PRICE = 10
 CHILD_WALLET = 200
 # Highest 'random' scrub price: kept at 99 so existing seeds replay identically.
 SCRUB_RANDOM_MAX = 99
-EVENT_SOURCES = ('npc', 'boss', 'fairy', 'quest', 'scrub', 'song')
+EVENT_SOURCES = ('npc', 'boss', 'fairy', 'quest', 'scrub', 'song', 'master_sword', 'gerudo_card')
 # Boss heart container of each dungeon map (one placed Obj_Heart_Container each).
 BOSS_HEARTS = {
     'InsideTheDekuTree': 'Deku Tree Queen Gohma Heart', 'DodongoCavern': 'Dodongos Cavern King Dodongo Heart',
@@ -257,6 +262,8 @@ def scan_map_sources(maps, instance_param=None, world_respawn=None):
         if folder in SKIP_FOLDERS:
             continue
         for index, actor in enumerate(maps[path]['root'].get('Actors', [])):
+            if inaccessible_child_actor(path, actor):
+                continue
             name = actor.get('Gyaml', '')
             ident = actor.get('Hash')
             if type(ident) is not int:
@@ -540,6 +547,22 @@ def collect(nup, dictionaries, members, maps):
     return entries
 
 
+UNDERWATER_INFO = 'RSDB/ActorInfo.Product.111.rstbl.byml.zs'
+
+
+def mark_underwater(nup, dictionaries, members, maps, extra):
+    """Mark the world-form spots under water (:mod:`oot_rando.game.underwater`)."""
+    from oot_rando.formats import byml_codec
+    from oot_rando.formats.inspect_resources import decompress
+    from oot_rando.game.underwater import mark_entries
+    if UNDERWATER_INFO not in members:
+        return 0
+    rows = byml_codec.load(decompress(nup.read(members[UNDERWATER_INFO]), dictionaries))['root']
+    boxes = {row['__RowId']: (row['ModelAabbMin'], row['ModelAabbMax']) for row in rows
+             if 'WaterPlane' in row.get('__RowId', '') and 'ModelAabbMin' in row and 'ModelAabbMax' in row}
+    return mark_entries(maps, extra, boxes.get)
+
+
 def scan_world(nup, dictionaries, members, progress=None):
     """Maps, chest groups, enemies and the other reward sources."""
     from oot_rando.game.remake_world import scan_maps
@@ -547,4 +570,5 @@ def scan_world(nup, dictionaries, members, progress=None):
     maps, groups, enemies = scan_maps(nup, dictionaries, members, progress)
     extra = collect(nup, dictionaries, members, maps)
     label_entries(maps, groups, extra)   # readable check names (game/check_names.py)
+    mark_underwater(nup, dictionaries, members, maps, extra)
     return maps, groups, enemies, extra

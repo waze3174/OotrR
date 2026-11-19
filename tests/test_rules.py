@@ -192,17 +192,22 @@ class LogicTests(unittest.TestCase):
         finally:
             del world.REMAKE_EXIT_RULES['Nowhere -> Elsewhere']
 
-    def test_sheik_and_light_arrows_follow_bosses_not_medallions(self):
-        # A starting medallion only fills the pouch: the sage scenes follow the boss.
+    def test_temple_of_time_scenes_follow_medallions(self):
+        # Starting or shuffled medallions suffice without their original bosses.
         class Day:
             tod = {'adult': True, 'child': True}
         rules = dict(self.logic.location_rules)
         sheik = rules['Sheik at Temple'][0][1]
-        self.assertFalse(sheik(Day, {'Forest Medallion': 1}, 'adult'))
-        self.assertTrue(sheik(Day, {'Forest Temple Clear': 1}, 'adult'))
+        self.assertTrue(sheik(Day, {'Forest Medallion': 1}, 'adult'))
+        self.assertFalse(sheik(Day, {'Forest Medallion': 1}, 'child'))
+        self.assertFalse(sheik(Day, {'Forest Temple Clear': 1}, 'adult'))
         lacs = rules['ToT Light Arrows Cutscene'][0][1]
         medals = {'Shadow Medallion': 1, 'Spirit Medallion': 1}
-        self.assertFalse(lacs(Day, medals, 'adult'))
+        self.assertTrue(lacs(Day, medals, 'adult'))
+        self.assertFalse(lacs(Day, medals, 'child'))
+        self.assertFalse(lacs(Day, {'Shadow Medallion': 1}, 'adult'))
+        self.assertFalse(lacs(Day, {'Spirit Medallion': 1}, 'adult'))
+        self.assertFalse(lacs(Day, {'Shadow Temple Clear': 1, 'Spirit Temple Clear': 1}, 'adult'))
         self.assertTrue(lacs(Day, dict(medals, **{'Shadow Temple Clear': 1, 'Spirit Temple Clear': 1}), 'adult'))
 
     def test_stricter_rules_stay_reachable_with_open_zones(self):

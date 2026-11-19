@@ -35,7 +35,7 @@ from oot_rando.formats.byml_writer import lift_actors, patch_strings
 from oot_rando.logic import rando_options
 from oot_rando.tracker import ingame_bundle, ingame_icons
 
-GENERATOR_VERSION = '0.11.0'
+GENERATOR_VERSION = '0.11.1'
 ADAPTER_VERSION = 'ap-glitchless-v5'   # v5: progressive tokens (every copy gives the next level)
 ADULT_MAP = MAP.replace('_Child_', '_Adult_')
 STARTING_ITEMS = ('Item_BulletBag_Small', 'Item_Quiver_Small')
@@ -478,8 +478,32 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             story = {}
             for path, key, fix in story_fixes.FLOW_FIXES:
                 extra_raw[path], story[key] = fix(extra_raw.get(path) or decompress(read(path), d))
-            # First arrivals (area presentations) never move a quest back.
             from oot_rando.patching.quest_guard import CHALLENGES as CHALLENGE_TABLE
+            from oot_rando.patching import child_castle_skip
+            if child_castle_skip.enabled(settings.full):
+                # Child Hyrule Castle skipped: its requests never move the quests back.
+                from oot_rando.patching.quest_guard import challenge_steps
+                castle_steps = challenge_steps(decompress(read(CHALLENGE_TABLE), d))
+                story['child_castle'] = {}
+                for path in child_castle_skip.GUARDED_FLOWS:
+                    extra_raw[path], story['child_castle'][path] = child_castle_skip.guard_flow(
+                        path, extra_raw.get(path) or decompress(read(path), d), castle_steps)
+                # The Kokiri stay as before the Deku Tree's death until it dies.
+                schedules, talks = child_castle_skip.kokiri_paths(members)
+                story['child_castle_kokiri'] = {}
+                for path in schedules:
+                    raw, count = child_castle_skip.kokiri_schedule(extra_raw.get(path) or read(path))
+                    if count:
+                        extra_raw[path] = raw
+                        story['child_castle_kokiri'][path] = count
+                for path in talks:
+                    raw, changed = child_castle_skip.kokiri_talk(extra_raw.get(path) or decompress(read(path), d))
+                    if changed:
+                        extra_raw[path] = raw
+                        story['child_castle_kokiri'][path] = changed
+                if not story['child_castle_kokiri']:
+                    raise ValueError('No Kokiri state waiting for Zelda found.')
+            # First arrivals (area presentations) never move a quest back.
             arrival_flows, story['first_arrivals'] = story_fixes.keep_first_arrivals_forward(
                 lambda path: extra_raw.get(path) or decompress(read(path), d),
                 decompress(read(CHALLENGE_TABLE), d))
@@ -493,6 +517,10 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             # Adult Link can put the Master Sword back before the Forest Temple (raw file).
             extra_raw[story_fixes.PEDESTAL_MODULE], story['pedestal'] = story_fixes.pedestal_after_first_adult_arrival(
                 extra_raw.get(story_fixes.PEDESTAL_MODULE) or read(story_fixes.PEDESTAL_MODULE))
+            extra_raw[story_fixes.LIGHT_ARROWS_MODULE], story['light_arrows_medallions'] = story_fixes.light_arrows_on_medallions(
+                extra_raw.get(story_fixes.LIGHT_ARROWS_MODULE) or read(story_fixes.LIGHT_ARROWS_MODULE))
+            extra_raw[story_fixes.PRELUDE_MODULE], story['prelude_medallion'] = story_fixes.prelude_on_forest_medallion(
+                extra_raw.get(story_fixes.PRELUDE_MODULE) or read(story_fixes.PRELUDE_MODULE))
             # Zelda's escape on the Goron Ruby and the Zora Sapphire, checked at every item get.
             extra_raw[ACTION_GUIDE_FLOW], story['zelda_escape_item_get'] = story_fixes.zelda_escape_on_item_get(
                 extra_raw[ACTION_GUIDE_FLOW])
@@ -549,10 +577,18 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             # Maps/compasses "start with", keys "removed": dungeon data written at the start.
             from oot_rando.patching.event_patch import add_start_values
             from oot_rando.patching.key_adapter import start_dungeon_values, check_start_values
-            start_values = dict(start_dungeon_values(settings.full), **story_fixes.story_start_values())
+            from oot_rando.patching import child_castle_skip
+            castle_skip = child_castle_skip.enabled(settings.full)
+            start_values = dict(start_dungeon_values(settings.full), **story_fixes.story_start_values(),
+                                **(child_castle_skip.START_VALUES if castle_skip else {}))
             if start_values:
                 check_start_values(extra_raw[GAMEDATA], start_values)
                 extra_raw[opening] = add_start_values(extra_raw[opening], 'RandoCollected_Event3', start_values)
+            if castle_skip:
+                # Child Hyrule Castle skipped: the quests start where the castle leaves them.
+                extra_raw[opening], castle_events = child_castle_skip.add_start_steps(
+                    extra_raw[opening], child_castle_skip.start_step_params(lambda p: decompress(read(p), d)))
+                story['child_castle_start'] = castle_events
             # Big Poes to bring back: the collector's reward threshold (patching/big_poes.py).
             from oot_rando.patching import big_poes
             poe_count = settings.full.get('big_poe_count', big_poes.VANILLA_COUNT)
@@ -576,6 +612,8 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
                 skips['gift_get'] = full['gift_get']
             if full.get('song_flows'):
                 skips['songs'] = full['song_flows']
+            if full.get('master_sword_flows'):
+                skips['master_sword_flows'] = full['master_sword_flows']
             if settings.full.get('big_poe_count', 10) != 10:
                 skips['big_poes'] = settings.full['big_poe_count']
         current_flow = lambda path: extra_raw[path] if path in extra_raw else decompress(read(path), d)
@@ -845,9 +883,11 @@ def _build_full(nup, dictionaries_, members, settings, raw_maps, sources, read, 
     actors = {p['after'] for p in plan['placements'] + natives} - {p['before'] for p in plan['placements']}
     from oot_rando.patching.key_adapter import is_key_actor as _is_key_actor
     from oot_rando.patching.progressive import is_token
+    from oot_rando.patching.master_sword_item import MASTER_SWORD_ACTOR
     for actor in sorted(actors):
         if (actor.startswith(('Item_Soul_', 'Item_AP_')) or is_derived(actor) or actor in repeatable_actors
-                or _is_key_actor(actor) or is_token(actor)):
+                or _is_key_actor(actor) or is_token(actor)
+                or (settings.full.get('shuffle_master_sword') and actor == MASTER_SWORD_ACTOR)):
             continue
         if 'Pack/Actor/' + actor + '.pack.zs' not in members:
             raise ValueError('Reward actor missing from the game: ' + actor)
@@ -859,13 +899,23 @@ def _build_full(nup, dictionaries_, members, settings, raw_maps, sources, read, 
                                          lifts.get(resource, {}))
     patch_repeatable_sources(repeatables, maps, raw_maps)
     modified, new = {}, {}
+    if settings.full.get('shuffle_master_sword'):
+        from oot_rando.patching.master_sword_item import build_files as build_master_sword_files
+        master_modified, master_new = build_master_sword_files(
+            lambda path: decompress(read(path), dictionaries_))
+        modified.update(master_modified)
+        new.update(master_new)
     if plan['souls']['items']:
         report('Building souls: items, tables, flags and texts…')
         messages = sorted(m for m in members if m.startswith('Mals/') and '.Product.110.' in m)
         if not messages:
             raise ValueError('Message archives not found: soul names cannot be shown.')
-        modified, new = build_soul_files(lambda path: decompress(read(path), dictionaries_),
-                                         plan['souls']['items'], messages)
+        # Read the tables already modified (Master Sword rows), keep the files built before.
+        soul_modified, soul_new = build_soul_files(
+            lambda path: modified[path] if path in modified else decompress(read(path), dictionaries_),
+            plan['souls']['items'], messages)
+        modified.update(soul_modified)
+        new.update(soul_new)
         # Enemies with their own Presence read "soul AND vanilla condition" BoolExps.
         from oot_rando.patching.soul_adapter import GAMEDATA as _GAMEDATA, add_soul_expressions
         modified[_GAMEDATA] = add_soul_expressions(
@@ -940,7 +990,7 @@ def _build_full(nup, dictionaries_, members, settings, raw_maps, sources, read, 
         if not event_variants:
             continue
         if entry.get('source') == 'song' and gid not in shuffled_ids:
-            continue   # vanilla songs: flows left untouched (they keep their skip windows)
+            continue   # vanilla songs: no collection marker (their cutscene only loses its minigame)
         if entry.get('native_flag'):
             # Business scrubs save their own flag once the purchase succeeded
             # (a marker after the sub-flow would also fire on "No").
@@ -979,6 +1029,12 @@ def _build_full(nup, dictionaries_, members, settings, raw_maps, sources, read, 
         if raw is None:
             raw = decompress(read(resource), dictionaries_)
         modified[resource] = patch_song_flow(raw, ops)
+    if any(ops.get('teaching') for ops in plan['song_flows'].values()):
+        # Link's own tune without the melody being added (song_adapter.add_teaching_entries).
+        from oot_rando.patching.song_adapter import TEACHING_FLOW_PATH, add_teaching_entries
+        if TEACHING_FLOW_PATH in modified:
+            raise ValueError('Ocarina teaching flow already modified.')
+        modified[TEACHING_FLOW_PATH] = add_teaching_entries(decompress(read(TEACHING_FLOW_PATH), dictionaries_))
     # Cutscene gifts: the shuffled item is given (and shown in Link's hands) once back
     # in game, after the cutscene (pilot flows only).
     from oot_rando.patching.qol_patches import GIFT_AFTER_CUTSCENE, bypass_cutscene_gift, give_gift_after
@@ -1022,6 +1078,17 @@ def _build_full(nup, dictionaries_, members, settings, raw_maps, sources, read, 
         if path in modified or path in new:
             raise ValueError('Shopkeeper pack already modified: ' + seller)
         modified[path], _ = limit_shop_stock(decompress(read(path), dictionaries_), slots)
+    # Songs in chests or as pickups: drawn as Sheik's harp in their colour (patching/song_models.py).
+    from oot_rando.patching import song_models
+    harp_songs = sorted({_reward(p) for p in plan['placements']
+                         if p['form'] in ('chest', 'world') and _reward(p) in song_models.SONG_COLOURS})
+    plan['song_models'] = {song: song_models.project_of(song) for song in harp_songs}
+    if harp_songs:
+        report(f'Building {len(harp_songs)} song harps (one colour per song)…')
+        harp_modified, harp_new = song_models.build_files(
+            lambda path: modified[path] if path in modified else decompress(read(path), dictionaries_), harp_songs)
+        modified.update(harp_modified)
+        new.update(harp_new)
     derived = derived_actors(p['after'] for p in plan['placements'] + natives)
     if derived or repeatables:
         report(f'Building {len(derived)} derived actors (freestanding and shop items)…')
@@ -1032,6 +1099,8 @@ def _build_full(nup, dictionaries_, members, settings, raw_maps, sources, read, 
                 path = 'Pack/Actor/' + actor + '.pack.zs'
                 if path in new:      # generated pack (soul): derive world/shop forms from it
                     packs[actor] = sarc(new[path][0])
+                elif path in modified:   # song repointed to its harp
+                    packs[actor] = sarc(modified[path])
                 else:
                     packs[actor] = sarc(decompress(read(path), dictionaries_)) if path in members else None
             return packs[actor]
@@ -1055,6 +1124,14 @@ def _build_full(nup, dictionaries_, members, settings, raw_maps, sources, read, 
         if raw is None:
             raw = decompress(read(GAMEDATA), dictionaries_)
         modified[GAMEDATA], plan['repeatable_flags'] = register_repeatable_flags(raw, repeatables)
+    from oot_rando.patching import special_item_shuffle
+    plan['master_sword_flows'] = {}
+    for path in special_item_shuffle.flow_paths(settings.full, members):
+        raw = modified.get(path)
+        if raw is None:
+            raw = decompress(read(path), dictionaries_)
+        modified[path], details = special_item_shuffle.patch_flow(path, raw)
+        plan['master_sword_flows'][path] = details
     plan['derived_actors'] = derived + sorted(repeatable_actors)
     plan['logic_world_version'] = data.version
     plan['logic_world_sha256'] = data.fingerprint()

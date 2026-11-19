@@ -336,8 +336,12 @@ def _fairy_reward_flag(name, reward, actor):
         from evfl.util import make_index
         flow = _Chart(raw)
         gift = flow.event(reward, 'SubFlowEvent')
-        if (gift.data.res_flowchart_name != 'Dm_SY_GetInEvent'
-                or not gift.data.entry_point_name.startswith('GetInEvent') or 'ActorName' not in _params(gift)):
+        # A song placed here is already a silent add (patching/song_adapter.py: text_get).
+        posed = (gift.data.res_flowchart_name == 'Dm_SY_GetInEvent'
+                 and gift.data.entry_point_name.startswith('GetInEvent'))
+        silent = (gift.data.res_flowchart_name, gift.data.entry_point_name) == (
+            'GetPouchContent', 'GetPouchContentByActorName')
+        if not (posed or silent) or 'ActorName' not in _params(gift):
             raise ValueError('Unexpected Great Fairy reward: ' + name)
         links = _predecessors(flow.chart, gift)
         if not links or any(kind == 'entry' for _, kind, _ in links):
@@ -620,6 +624,126 @@ PEDESTAL_MODULE = 'Logic/Market_Adult_Prefab_89da.logic.module.ainb'
 PEDESTAL_BEFORE = 'SageOfForest_IsCompleted_Exp'
 PEDESTAL_GATE = 'AllSage_IsAfter_Ready_Exp'
 
+# Zelda's revelation: inventory, independent of which bosses granted the rewards.
+LIGHT_ARROWS_MODULE = 'Logic/Market_Adult_Prefab_c668.logic.module.ainb'
+LIGHT_ARROWS_MEDALS = ('IsGet.Item_Medal_Shadow', 'IsGet.Item_Medal_Spirit')
+LIGHT_ARROWS_PLAYED = 'HavePlayedEvent.Dm_TimeTemple_0135'
+PRELUDE_MODULE = 'Logic/Market_Adult_Prefab_edc2.logic.module.ainb'
+PRELUDE_MEDAL = 'IsGet.Item_Medal_Forest'
+PRELUDE_LATER_STEP = 'AllSage_IsAfter_Step01_01_Exp'
+
+
+def prelude_keeps_later_sage_progress(raw):
+    """Teaching Prelude after Zelda's revelation must not roll AllSage back."""
+    from evfl.util import make_index
+    flow = _Chart(raw)
+    teaching = flow.event('Event37', 'ActionEvent')
+    rollback = flow.event('Event34', 'ActionEvent')
+    if (_params(teaching).get('EventName') != 'Dm_MelodyGet_Shine'
+            or teaching.data.nxt.v is not rollback
+            or rollback.data.actor_action.v.v != 'EventExecuteRollbackChallengeStep'
+            or _params(rollback).get('ChallengeName') != 'AllSage'
+            or _params(rollback).get('ChallengeStep') != 'Step01_01'):
+        raise ValueError('Unexpected Prelude quest rollback (already patched?).')
+    gate = flow.switch('RandoPreludeLaterSages', 'EventQueryIsGameDataBoolExp',
+                       {'GameDataName': PRELUDE_LATER_STEP}, None, rollback)
+    teaching.data.nxt = make_index(gate)
+    result, _ = flow.write()
+    return result, {'gate': PRELUDE_LATER_STEP, 'rollback': 'Event34'}
+
+
+def prelude_on_forest_medallion(raw):
+    """The native one-shot Prelude area checks the Forest Medallion, not its boss."""
+    import copy
+    import ainb
+    from oot_rando.patching.ap_mailbox import ainb_to_binary
+    document = ainb.AINB.from_binary(raw).as_dict()
+    nodes = document['Nodes']
+    if len(nodes) != 5 or nodes[3]['Name'] != 'HoldGameDataGetBoolExpSimple':
+        raise ValueError('Unexpected Prelude trigger module (already patched?).')
+    gate = nodes[3]['Parameters']['Inputs']['String'][0]
+    if (gate['Name'], gate['Default Value']) != ('GameDataNameBoolExp', PEDESTAL_BEFORE):
+        raise ValueError('Unexpected Prelude story gate.')
+    expected = copy.deepcopy(document)
+    node = expected['Nodes'][3]
+    node['Name'] = 'HoldGameDataGetBoolSimple'
+    node['Parameters']['Inputs']['String'][0].update(
+        {'Name': 'GameDataNameBool', 'Default Value': PRELUDE_MEDAL})
+    node['Parameters']['Inputs']['Int'] = [{'Name': 'GameDataArrayIndex', 'Default Value': -1,
+        'Node Index': -1, 'Output Index': 0, 'Flags': ['Uses Default', 'Is Output']}]
+    result = ainb_to_binary(copy.deepcopy(expected))
+    if ainb.AINB.from_binary(result).as_dict() != expected:
+        raise ValueError('Prelude trigger wrongly rewritten.')
+    return result, {'module': PRELUDE_MODULE, 'medallion': PRELUDE_MEDAL}
+
+
+def light_arrows_on_medallions(raw):
+    """Keep the adult temple area; enable it on both medals until Zelda's abduction."""
+    import copy
+    import uuid
+    import ainb
+    from oot_rando.patching.ap_mailbox import ainb_to_binary
+    document = ainb.AINB.from_binary(raw).as_dict()
+    nodes = document['Nodes']
+    if (len(nodes) != 5 or [n['Name'] for n in nodes] != [
+            'ActorLogicEventRequestActor', 'ActorLogicAreaActor',
+            'HoldChallengeCurrentStepCheckOrder', 'HoldActorObserverBySensorHitInfo', 'OperateAND']
+            or ainb.AINB.from_binary(ainb_to_binary(copy.deepcopy(document))).as_dict() != document):
+        raise ValueError('Unexpected Light Arrows trigger module (already patched?).')
+    inputs = nodes[2]['Parameters']['Inputs']['String']
+    if [(p['Name'], p['Default Value']) for p in inputs] != [
+            ('ChallengeName', 'Work/Challenge/AllSage.game__challenge__Challenge.gyml'),
+            ('ChallengeStepName', 'Step02')]:
+        raise ValueError('Unexpected Light Arrows story gate.')
+
+    expected = copy.deepcopy(document)
+    nodes = expected['Nodes']
+
+    def query(index, name, inputs, outputs, queries=()):
+        # Stable GUIDs keep a seed's generated files reproducible.
+        return {'Node Type': 'UserDefined', 'Node Index': index, 'Name': name,
+                'GUID': str(uuid.uuid5(uuid.NAMESPACE_URL, 'oot-rando/light-arrows/' + str(index))),
+                'Flags': ['Is Query'], 'Queries': list(queries), 'Attachments': [], 'Properties': {},
+                'Parameters': {'Inputs': inputs, 'Outputs': outputs}, 'XLink Actions': [], 'Plugs': {}}
+
+    def flag(index, name):
+        return query(index, 'HoldGameDataGetBoolSimple', {
+            'Int': [{'Name': 'GameDataArrayIndex', 'Default Value': -1, 'Node Index': -1,
+                     'Output Index': 0, 'Flags': ['Uses Default', 'Is Output']}],
+            'String': [{'Name': 'GameDataNameBool', 'Default Value': name, 'Node Index': -1,
+                        'Output Index': 0, 'Flags': ['Uses Default']}]},
+            {'Bool': [{'Name': 'Bool', 'Is Output': True}]})
+
+    nodes[2] = flag(2, LIGHT_ARROWS_PLAYED)
+    nodes.extend(flag(i, name) for i, name in zip((5, 6), LIGHT_ARROWS_MEDALS))
+    inverse = query(7, 'InvBool.module', {'Bool': [
+        {'Name': 'BoolMulti', 'Default Value': False, 'Node Index': 2, 'Output Index': 0, 'Flags': []},
+        {'Name': 'UpdateOnce', 'Default Value': False, 'Node Index': -1, 'Output Index': 0,
+         'Flags': ['Uses Default', 'Is Output']}]}, {'Bool': [{'Name': 'InvBool', 'Is Output': True}]}, (2,))
+    inverse['Flags'].append('Is Module')
+    inverse['Plugs'] = {'Generic': [{'Node Index': 2, 'Name': 'BoolMulti'}]}
+    nodes.append(inverse)
+    ready = copy.deepcopy(nodes[4])
+    ready.update({'Node Index': 8, 'GUID': str(uuid.uuid5(uuid.NAMESPACE_URL, 'oot-rando/light-arrows/8')),
+                  'Queries': [5, 6, 7],
+                  'Plugs': {'Generic': [{'Node Index': 5, 'Name': 'BoolMulti'}]}})
+    ready['Parameters']['Inputs']['Bool'][0]['Sources'] = [
+        {'Node Index': i, 'Output Index': 0, 'Flags': []} for i in (5, 6, 7)]
+    nodes.append(ready)
+    # The area's existence and the event request use the same readiness condition.
+    area = next(p for p in nodes[1]['Parameters']['Inputs']['Bool'] if p['Name'] == 'Logic_Create')
+    area.update({'Node Index': 8, 'Output Index': 1})
+    nodes[1]['Queries'] = [8]
+    nodes[1]['Plugs']['Generic'][1]['Node Index'] = 8
+    nodes[4]['Queries'] = [3, 8]
+    nodes[4]['Parameters']['Inputs']['Bool'][0]['Sources'][1].update({'Node Index': 8, 'Output Index': 1})
+    expected['Modules'].append({'Path': 'InvBool.module.ainb', 'Category': 'Logic', 'Instance Count': 1})
+    result = ainb_to_binary(copy.deepcopy(expected))
+    if ainb.AINB.from_binary(result).as_dict() != expected:
+        raise ValueError('Light Arrows trigger wrongly rewritten.')
+    return result, {'module': LIGHT_ARROWS_MODULE, 'medallions': list(LIGHT_ARROWS_MEDALS),
+                    'played': LIGHT_ARROWS_PLAYED}
+
 
 def pedestal_after_first_adult_arrival(raw):
     """``Market_Adult_Prefab_89da``: the put-in prompt from the first adult arrival on.
@@ -855,7 +979,8 @@ CLOCK_FLAGS = (CLOCK_FLAG, ARRIVE_FLAG)
 
 def story_start_values():
     """GameData values written at the end of the new-game opening (full mode)."""
-    return {name: True for name in CLOCK_FLAGS}
+    from oot_rando.patching.owl_advice import start_values
+    return {**{name: True for name in CLOCK_FLAGS}, **start_values()}
 
 
 # --- First arrivals never move a quest back --------------------------------------
@@ -926,7 +1051,57 @@ def keep_first_arrivals_forward(read_flow, challenges_raw):
     return files, report
 
 
+from oot_rando.patching.owl_advice import FLOW_FIXES as OWL_FLOW_FIXES
+
+# --- Link the Goron's tunic (adult) ------------------------------------------------
+# Adult Link the Goron (``Npc_Goron_DaruniaJr_Adult``) hands over the Goron Tunic in
+# ``SageOfFire`` ``Step02`` talk, only while the quest stands at ``TalkDaruniaJr``. The
+# Death Mountain Crater sets the quest to ``MeetSheik`` as soon as Link enters it (logic
+# ``DeathMountainCrater_Adult_Prefab_a0e2``): after Bolero of Fire, or any crater visit,
+# that talk never comes back, and before Dodongo's Cavern the quest stayed out of his
+# reach (user report 19/11). His own talk (``Talk``, the one he keeps outside those
+# steps) now gives the tunic first while Link has none
+# (``Dm_SY_GetInEvent/GetInEvent_NotTurn_NotNpc``, the vanilla get with Link's pose).
+LINK_GORON_FLOW = 'Event/EventFlow/Npc_Goron_DaruniaJr_Adult.bfevfl.zs'
+LINK_GORON_TALK = 'Talk'
+GORON_TUNIC_GIFT = 'Obj_Armor_Goron'
+GORON_TUNIC = 'Armor_Adult_Goron'
+
+
+def link_goron_gives_tunic(raw):
+    """``Npc_Goron_DaruniaJr_Adult``: his talk gives the Goron Tunic while Link has none.
+
+    Returns (bytes, report)."""
+    from evfl.util import make_index
+    from oot_rando.patching.progressive import FlowEditor, link
+    editor = FlowEditor(raw, 'Npc_Goron_DaruniaJr_Adult')
+    chart = editor.chart
+    entry = next((e for e in chart.entry_points if e.name == LINK_GORON_TALK), None)
+    if entry is None or getattr(entry.main_event, 'v', None) is None or entry.main_event.v.name != 'Event99':
+        raise ValueError("Unexpected Link the Goron's talk flow.")
+    if any(e.name.startswith('RandoGoronTunic') for e in chart.events):
+        raise ValueError('Story fix already applied: RandoGoronTunic')
+    usual = entry.main_event.v
+    give = editor.subflow('RandoGoronTunicGive', 'Dm_SY_GetInEvent', 'GetInEvent_NotTurn_NotNpc',
+                          {'ActorName': GORON_TUNIC_GIFT, 'IsNpcEventStarter': False})
+    link(give, usual)
+    has = editor.switch('RandoGoronTunicHas', 'PouchSystemActor', 'EventQueryIsExistInPouch',
+                        {'Actor': GORON_TUNIC, 'Num': 1}, usual, give)
+    entry.main_event = make_index(has)
+    entry._sub_flow_event_indices = list(entry._sub_flow_event_indices) + [chart.events.index(give)]
+    result, checked = editor.write("Link the Goron's tunic")
+    events = {e.name: e for e in checked.flowchart.events}
+    start = {e.name: e for e in checked.flowchart.entry_points}[LINK_GORON_TALK].main_event.v
+    cases = {k: c.v.name for k, c in events['RandoGoronTunicHas'].data.cases.items()}
+    if (start.name != 'RandoGoronTunicHas' or cases != {0: 'Event99', 1: 'RandoGoronTunicGive'}
+            or events['RandoGoronTunicGive'].data.nxt.v.name != 'Event99'):
+        raise ValueError("Link the Goron's tunic wrongly chained.")
+    return result, {'flow': LINK_GORON_FLOW, 'entry': LINK_GORON_TALK, 'gift': GORON_TUNIC_GIFT}
+
+
 FLOW_FIXES = (
+    *OWL_FLOW_FIXES,
+    ('Event/EventFlow/AllSage.bfevfl.zs', 'prelude_quest_forward', prelude_keeps_later_sage_progress),
     (FIRE_STONE_FLOW, 'darunia_gift', darunia_gift_after_dungeon),
     (DARUNIA_GIFT_FLOW, 'fire_quest_forward', keep_fire_quest_forward),
     (EPONA_FLOW, 'second_malon', second_malon_after_talon),
@@ -941,4 +1116,5 @@ FLOW_FIXES = (
     (KOKIRI_EXIT_FLOW, 'kokiri_exit_guard', kokiri_exit_guard_steps_aside),
     (DAMPE_FLOW, 'dampe_first_race', dampe_first_race_until_prize),
     (SARIA_SONG_FLOW, 'saria_song_forward', door_of_time_forward),
+    (LINK_GORON_FLOW, 'link_goron_tunic', link_goron_gives_tunic),
 )

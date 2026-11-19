@@ -33,8 +33,8 @@ shuffled reward only once (`repeatable_adapter.py`), then go back to their vanil
 * **Starting inventory** (`start_inventory_from_pool`, AP name): items held from the
   start, given silently at the end of the opening (`event_patch.add_pouch_items`). A
   copy found in the item pool is replaced by rupees; progressive copies take the
-  lowest levels of their family. Songs, tunics and trade items have no pouch actor
-  yet. In a multiworld, the apworld's own `start_inventory_from_pool` is used.
+  lowest levels of their family. Songs are given the same way (`Item_Melody_*`);
+  tunics and trade items have no pouch actor yet. In a multiworld, the apworld's own `start_inventory_from_pool` is used.
 * **Item pool** (`item_pool_value`): plentiful (one extra copy of each major
   non-progressive item, replacing filler), scarce (at most 3 bottles, half the
   hearts), minimal (one bottle, no hearts, double defense or capacity upgrades). The
@@ -66,17 +66,30 @@ the melody of the current `MelodyType`) and also adds it silently
 
 * **Modes**: vanilla; shuffled among the song locations; song locations and
   dungeon rewards; anywhere a cutscene can give them (song locations, dungeon
-  rewards, great fairies, story rewards; the matching options must be on). Never in
-  chests, pickups, shops or NPC gifts: those show the item in Link's hands. Never at
-  Queen Gohma either (her gift is given back after the cutscene with a pose).
+  rewards, great fairies, story rewards; the matching options must be on); anywhere,
+  chests and pickups too (`everywhere`: also chests, freestanding spots, pots, crates,
+  gold skulltulas… when shuffled). Never in shops or NPC gifts. Never at Queen Gohma
+  either (her gift is given back after the cutscene with a pose).
+* **Harp in the song's colour** (`song_models.py`, `everywhere` only): a song in a
+  chest or as a pickup is held up or stands in the world, so it gets the model of
+  Sheik's harp. Each placed song has its own copy of the harp
+  (`Model/Item_Harp_<song>.Item_Harp_Sheik.bfres`) whose material `Mt_Harp_Sheik`
+  has its six colour parameters (`ns_param_color0`–`5`, white in the game) set to the
+  song's colour of the ocarina menu; its ModelInfo and ActorInfo row name that
+  project, and its pickups (`Obj_Rando_Item_Melody_*`) copy them. The pickup is
+  raised by the harp's depth below its origin (0.25 m).
 * **Text only**: a song is given by the silent add followed by
   `GetPouchContent/DisplayGetByActorName`, the game's get window without pose
   ("You learned Saria's Song!" and its caption; the same call Saria's ocarina gift
   uses). A pose-based get (`Dm_SY_GetInEvent/*`, great fairies) becomes the silent
   add. A source that already has its own display call (Ocarina of Time, Ruto's
   sapphire) gets no second window. Received from another world: same hand-over.
-* **Song location giving another item**: every `LearningOcarina*` call of the
-  cutscene becomes a one-frame wait (no wrong melody taught or added), the placed
+* **Every song cutscene** (songs shuffled or not): the NPC no longer plays the melody
+  to memorise (`LearningOcarinaPlayExample` only sets the melody, `RandoLearningPrepare`);
+  the player still plays it back, then Link's tune (Sheik's duet for the warp songs)
+  plays the notes just input: it stays silent without them (tested in game 19/11).
+* **Song location giving another item**: the end of the teaching plays Link's tune
+  without adding the melody (`Rando*` entries added to `Dm_SY_Ocarina`), the placed
   item is added silently and its get window shown. Sheik in Crater's direct write of
   `IsGet.Item_Melody_FireBolero` follows the placed song (or is removed). The NPC's
   lines still speak of the vanilla song.
@@ -283,10 +296,25 @@ outside the maps are not covered (except chest events).
     token after the bullet bag was expected): the first one found gives the slingshot,
     the next one the bag; a native chest found later never takes capacity away.
 11. **Songs**: a song cutscene giving another song shows only its text and adds the
-    right song (menu, playable); one giving an item does not teach its melody; a song
+    right song (menu, playable); one giving an item does not add its melody; no NPC
+    plays the melody to memorise, the player plays it back, Link's tune plays; a song
     at a great fairy or a dungeon reward shows its text, nothing held; the windmill
     still plays its cutscene once Song of Storms was found elsewhere.
 12. **Big Poes**: with 3 to bring back, the collector rewards the third sale.
+13. **Skip child Hyrule Castle** (`skip_child_zelda`): new game without Zelda's Letter
+    and Lullaby (found elsewhere, the lullaby possibly as a harp in a chest); with the forest closed, the Kokiri guard and Mido still wait for the Deku
+    Tree; Saria teaches her song in the meadow; the Kakariko gate opens with the letter;
+    Talon and Malon are at Lon Lon Ranch (Epona's Song, the cucco game); Kaepora's first
+    field talk does not move the castle quest back; with the Goron Ruby and the Zora
+    Sapphire, Zelda flees and the Door of Time opens.
+14. **Pickup visuals**: progressive slingshot, bow and hookshot copies use their
+    native item poses. Gold Skulltula drops no longer use the skull-shaped aura.
+    Items without an effect borrow the moat ocarina glow; check visibility under
+    water and confirm it does not obscure the item. Resource tests pass; appearance
+    still needs an in-game check.
+15. **Child Death Mountain Crater**: child actors remain vanilla and are excluded
+    from both shuffle candidates and logic. Adult copies remain eligible. Child
+    bean planting is also out of logic, including for the adult volcano heart.
 
 Known limits: some NPCs decide "already given" from the vanilla item (e.g. silver
 scale for the diving game) and can give their new item again; shop texts of

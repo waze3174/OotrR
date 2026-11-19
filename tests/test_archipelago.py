@@ -302,6 +302,10 @@ class WithGame(unittest.TestCase):
                 "catalog = json.loads(zipfile.ZipFile(path).read('oot_remake/catalog.json'))\n"
                 f"world = bridge.PlayerWorld(catalog, {self.values!r}, 'k')\n"
                 "assert world.reach({})[0] is not None\n"
+                f"values = dict({self.values!r}, skip_child_zelda=True, shuffle_enemy_spawns='off')\n"
+                "skipped = bridge.PlayerWorld(catalog, values, 'castle-skip')\n"
+                "assert 'Zeldas Letter' in skipped.pool and 'Zeldas Lullaby' in skipped.pool\n"
+                "assert skipped.reach({})[0] is not None\n"
                 "assert 'zstandard' not in sys.modules and 'evfl' not in sys.modules\n"
                 "print(len(world.names))\n")
             done = subprocess.run([sys.executable, '-I', '-c', script], capture_output=True, text=True,

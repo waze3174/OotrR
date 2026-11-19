@@ -150,10 +150,13 @@ Code: [qol_patches.py](src/oot_rando/patching/qol_patches.py).
 | **Flow-driven cutscenes, up to their events** | the native skip *jumps* to `EventTriggerSkipEnd`. Each entry is cut into units (action, sub-flow, fork, branch): cosmetic actions are skippable; idempotent writes (constant flag, "has talked", absolute warp of Link, sound mode) are skippable when run on every path, then **replayed** after `SkipEnd` when the skip was used (`EventQueryIsEventSkipedMostRecent`); anything else (transition, pouch, quest, choice, unknown action…) is a barrier. Flows that talk are never covered (skipping Saria at the ladder crashed the game) | to test |
 | **Chests without cutscene** | `Dm_SY_Treasurebox/Success_`: `Success_PlayerPerform` (camera, Link's kick, spinning item, ~9 s) and the 90-frame wait are replaced by `/Open` (lid) then the item get and its window. `Dm_SY_TreasureboxSmall/Success_`: `/Open` (Link's opening animation, event cameras, Navi) is replaced by the lid's actions (not awaited), Link's get pose and `/Pack_ItemDisplay` | to retest |
 | **Ocarina found before the Deku Tree** (full randomizer) | `ActionGuide/ActionGuide` first runs `OpenActionGuideSceenForOcarina` when the Fairy Ocarina is in the pouch (guide shown once) | to test |
+| **Owl advice removed** (full randomizer) | tutorial flags are set at the opening; the first field conversation keeps its quest work; Death Mountain and Lake Hylia keep a single ride choice. The Dream World introduction unlocks the service silently | statically verified; to test in game |
+| **Skip child Hyrule Castle** (full randomizer, `skip_child_zelda`) | the opening replays the native quest requests the castle makes (`Goto_HyruleCastle` complete, `DoorOfTime` at Impa's send-off, `Get_StoneOfFire` at Kakariko) and sets Talon's wake-up flags; Zelda's Letter and Lullaby are shuffled elsewhere (the lullaby anywhere a song can be given); the castle's shuffled checks hold green rupees (Great Fairy apart); castle requests of earlier steps are skipped once the quest is complete ([child_castle_skip.py](src/oot_rando/patching/child_castle_skip.py)) | statically verified; to test in game |
 | **Turbo A** | holding X during a dialogue taps A (keyboard key bound to A in `hookshot_options.ini`) | always on |
 
-NPC conversations are not skippable (an earlier attempt crashed the game); turbo
-A speeds up their text instead. Presentation flows that write data or change map
+Other NPC conversations are not skippable (an earlier attempt crashed the game); turbo
+A speeds up their text instead. The owl patch bypasses specific advice triggers and keeps
+transport cleanup and Dream World functionality. Presentation flows that write data or change map
 (`Dm_Kokiri_0045`, `Dm_LakeHrl_0003/0005`, `Dm_LonLon_0010`) are left alone. Each
 patch is read back and compared semantically; `python -m oot_rando verify` reapplies
 the quality-of-life patches on the original flows.

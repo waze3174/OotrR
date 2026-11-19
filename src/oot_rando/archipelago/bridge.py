@@ -44,6 +44,9 @@ def scan_fingerprint(groups, enemies, extra):
     enemies = [dict(enemy, locks=[lock for lock in enemy['locks'] if not lock.get('direct')])
                if any(lock.get('direct') for lock in enemy.get('locks') or ()) else enemy
                for enemy in enemies]
+    # ``mechanics`` only loosens the dungeon entry souls (older catalogs, without
+    # it, keep every soul of the dungeon): earlier patches remain valid.
+    enemies = [{k: v for k, v in enemy.items() if k != 'mechanics'} for enemy in enemies]
     return hashlib.sha256(_canonical({'groups': groups, 'enemies': enemies, 'extra': extra})).hexdigest()
 
 
@@ -131,6 +134,7 @@ def _catalog_variants():
                       shopsanity='4', tokensanity='all', shuffle_scrubs='low', shuffle_freestanding_items='all',
                       shuffle_npc_gifts=True, shuffle_boss_rewards=True, shuffle_great_fairies=True,
                       shuffle_quest_rewards=True, shuffle_pots='all', shuffle_crates='all', shuffle_beehives=True,
+                      shuffle_master_sword=True, shuffle_gerudo_card=True,
                       shuffle_bushes=True, shuffle_rocks=True, shuffle_trees=True, shuffle_mapcompass='dungeon',
                       shuffle_smallkeys='keysanity', shuffle_bosskeys='keysanity',
                       shuffle_song_items='any')

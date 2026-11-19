@@ -63,9 +63,16 @@ class Units(unittest.TestCase):
         self.assertEqual(ops['F/Dm_MelodyGet_Fire']['params'],
                          [['Event1', 'GameDataName', 'IsGet.Item_Melody_FireBolero', 'IsGet.Item_Melody_SunSong']])
 
-    def test_unchanged_song_location_is_untouched(self):
-        self.assertEqual(self._plan([{'source': 'song', 'ap': ['Song from Saria'], 'before': 'Item_Melody_SariaSong',
-                                      'after': 'Item_Melody_SariaSong', 'variants': []}], 'shuffled'), {})
+    def test_unchanged_song_location_only_loses_its_minigame(self):
+        ops = self._plan([{'source': 'song', 'ap': ['Song from Saria'], 'before': 'Item_Melody_SariaSong',
+                           'after': 'Item_Melody_SariaSong', 'variants': []}], 'shuffled')
+        self.assertEqual(ops['F/Dm_MelodyGet_Saria'], {'teaching': songs.KEEP_ADD})
+
+    def test_every_song_cutscene_loses_its_minigame_even_vanilla(self):
+        # User report 19/11: every song cutscene, songs shuffled or not.
+        ops = self._plan([], 'vanilla')
+        stems = {stem for ap, *_ in songs.SONG_LOCATIONS for stem in songs.location_flows(ap)}
+        self.assertEqual(ops, {f'F/{stem}': {'teaching': songs.KEEP_ADD} for stem in stems})
 
     def test_sun_song_teaching_is_in_another_flow(self):
         ops = self._plan([{'source': 'song', 'ap': ['Song from Royal Familys Tomb'], 'before': 'Item_Melody_SunSong',
@@ -129,9 +136,25 @@ class WithGame(unittest.TestCase):
                 for path in event_paths(self.m, flow):
                     with self.subTest(flow=path):
                         raw = songs.patch_flow(self.read(path), {'teaching': True})
-                        left = [e for e in self.events(raw).values() if isinstance(e.data, SubFlowEvent)
-                                and e.data.entry_point_name.startswith(songs.TEACHING_PREFIX)]
-                        self.assertEqual(left, [])
+                        left = [e.data.entry_point_name for e in self.events(raw).values()
+                                if isinstance(e.data, SubFlowEvent)
+                                and e.data.res_flowchart_name == songs.TEACHING_FLOW
+                                and 'Learning' in e.data.entry_point_name]
+                        # Link's own tune stays, the example and the minigame go (19/11).
+                        self.assertTrue(left)
+                        # The player's play-back stays (Link's tune plays its notes).
+                        self.assertIn('LearningOcarinaFollowExample', left)
+                        self.assertLessEqual(set(left), {*songs.TEACHING_REPLACED.values(), *songs.TEACHING_KEPT})
+                        # Its own song: the vanilla end stays (it adds the melody).
+                        raw = songs.patch_flow(self.read(path), {'teaching': songs.KEEP_ADD})
+                        kept = [e.data.entry_point_name for e in self.events(raw).values()
+                                if isinstance(e.data, SubFlowEvent)
+                                and e.data.res_flowchart_name == songs.TEACHING_FLOW
+                                and 'Learning' in e.data.entry_point_name]
+                        self.assertIn('RandoLearningPrepare', kept)
+                        self.assertTrue(set(kept) & set(songs.TEACHING_KEEP_ADD))
+                        self.assertLessEqual(set(kept), {'RandoLearningPrepare', *songs.TEACHING_KEPT,
+                                                         *songs.TEACHING_KEEP_ADD})
             path = event_paths(self.m, stem)[0]
             with self.subTest(give=path):
                 original = self.events(self.read(path))[event]
@@ -142,6 +165,41 @@ class WithGame(unittest.TestCase):
                 self.assertIs(events[event].data.nxt.v, shown)
                 self.assertEqual((shown.data.res_flowchart_name, shown.data.entry_point_name),
                                  (songs.GET_FLOW, songs.DISPLAY_ENTRY))
+
+    def test_teaching_entries_play_without_adding(self):
+        from evfl.event import ActionEvent
+        from oot_rando.patching.event_patch import _flow
+        raw = songs.add_teaching_entries(self.read(songs.TEACHING_FLOW_PATH))
+        flow = _flow(raw).flowchart
+        entries = {e.name: e for e in flow.entry_points}
+        for name in songs.TEACHING_REPLACED.values():
+            seen, todo, actions = set(), [entries[name].main_event.v], []
+            while todo:
+                event = todo.pop()
+                if event is None or event.name in seen:
+                    continue
+                seen.add(event.name)
+                data = event.data
+                if isinstance(data, ActionEvent):
+                    actions.append(data.actor_action.v.v)
+                todo += [c.v for c in (getattr(data, 'cases', None) or {}).values()]
+                nxt = getattr(data, 'nxt', None)
+                todo.append(nxt.v if nxt is not None else None)
+            self.assertNotIn('EventTriggerAddOrRemovePouchContent', actions, name)
+        # The example only sets the melody: nobody plays it.
+        named = {e.name: e for e in flow.events}
+        self.assertIs(entries['RandoLearningPrepare'].main_event.v, named['RandoTeach_SetMelody'])
+        self.assertIsNone(named['RandoTeach_SetMelody'].data.nxt.v)
+        # The caller's melody (an argument), as the vanilla example: a text reads as 0,
+        # Zelda's Lullaby for every song (user report 19/11).
+        from evfl.common import Argument
+        melody = named['RandoTeach_SetMelody'].data.params.data['MelodyType']
+        self.assertIsInstance(melody, Argument)
+        self.assertEqual(str(melody), 'MelodyType')
+        play = entries['RandoLearningPlayAuto']
+        self.assertEqual(len(play._sub_flow_event_indices), 2)
+        with self.assertRaises(ValueError):
+            songs.add_teaching_entries(raw)
 
     def test_pose_gets_become_text_only(self):
         from oot_rando.game.extra_sources import EVENT_GIFTS, event_paths

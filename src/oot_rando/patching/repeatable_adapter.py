@@ -22,7 +22,7 @@ import uuid
 from oot_rando.formats import byml_codec
 from oot_rando.formats.inspect_resources import sarc
 from oot_rando.game.item_forms import (WORLD_CANONICAL, DROP_PREFIX, SHOP_PREFIX, build_pack, canonical_of,
-                        is_derived, add_rsdb_rows, resolve_components)
+                        is_derived, add_rsdb_rows, resolve_components, underwater_actor)
 from oot_rando.patching.soul_adapter import FLAG_PREFIX as SOUL_FLAG_PREFIX, murmur3
 
 REPEATABLE = frozenset(('pots', 'bushes', 'rocks', 'crates', 'beehives', 'trees'))
@@ -453,6 +453,7 @@ def prepare_repeatables(plan, maps):
                 raise ValueError('Conditional presence cannot be combined for ' + placement['id'])
             variants.append({'resource': resource, 'index': index, 'native_once': native_once})
         record = {'id': placement['id'], 'actor': actor, 'canonical': canonical, 'kind': 'shop' if shop else 'pickup',
+                  'underwater': bool(placement.get('underwater')) and not shop,
                   'original_reward_actor': previous, 'flag': flag, 'flag_hash': murmur3(flag),
                   'event_filename': 'RandoOnce_' + key + '.event.root', 'variants': variants}
         if shop:
@@ -505,8 +506,11 @@ def build_repeatable_packs(records, read_pack, read_raw, tables):
         if event is None:
             global_ai = sarc(read_raw(EVENT_PACK))
             event, drop_ai = global_ai[EVENT_MEMBER], global_ai[DROP_AI_MEMBER]
-        # Dropped by its source: a falling pickup, not the standing token.
+        # Dropped by its source: a falling pickup, not the standing token; it glows
+        # under water (item_forms.GLOW_ACTOR).
         standard = DROP_PREFIX + record['canonical']
+        if record.get('underwater'):
+            standard = underwater_actor(standard)
         raw, template = build_pack(standard, read_pack, byml_codec)
         files = sarc(raw)
         old_path = f'Actor/{standard}.engine__actor__ActorParam.bgyml'

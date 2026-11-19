@@ -21,6 +21,9 @@ Their behaviour is experimental until an in-game pilot confirms it.
 import copy
 
 WORLD_PREFIX = 'Obj_Rando_'
+# The same pickups on a spot under water (``game/underwater.py``): they glow (see GLOW_ACTOR).
+WATER_PREFIX = 'Obj_RandoWater_'
+WATER_DROP_PREFIX = 'Obj_RandoWaterDrop_'
 SHOP_PREFIX = 'Shop_Rando_'
 # Skulltula drop of a native world pickup; keeps the name within MAX_ACTOR_NAME
 # (naming of REALAZK pickup_pack/kit.rs, MIT, ae9e4063).
@@ -37,7 +40,6 @@ DROP_TEMPLATE = 'Obj_DekuNut'
 DROP_TEMPLATE_DROPPED = ('CaptureRef',)
 SHOP_TEMPLATE = 'Shop_ArrowBundle_01'
 SHOP_PRICE = 10  # affordable without any wallet upgrade: the logic ignores prices
-LINK_KEYS = ('ELinkRef', 'SLinkRef')   # effect / sound users of the actor (not XLink: shared ActorBasic)
 RSDB_TABLES = ('ActorInfo', 'GameActorInfo', 'PouchActorInfo')
 MODEL_KEYS = ('FmdbName', 'ModelProjectName', 'ModelAabbMax', 'ModelAabbMin', 'ModelVariationFmabName',
               'AnimationResources', 'ASInfoAutoPlayMaterials', 'ELinkUserName')
@@ -95,17 +97,20 @@ MODEL_BOTTOM = {
     'Item_PoacherSaw': -0.031, 'Item_Prescription': -0.210, 'Item_Quiver_Large': -0.064, 'Item_Range_Bow': -0.056,
     'Item_Range_SlingShot': -0.090, 'Item_Shield_Mirror': -0.057, 'Item_StickBag_Large': -0.037,
     'Item_Sword_Biggoron': -0.067, 'Item_Sword_BrokenGiant': -0.067, 'Item_Sword_Giant': -0.262,
-    'Item_Sword_Kokiri': -0.040, 'Item_Token_Gerudo': -0.268, 'Item_Wallet_Medium': -0.037,
+    'Item_Sword_Kokiri': -0.040, 'Item_Rando_MasterSword': -0.051,
+    'Item_Token_Gerudo': -0.268, 'Item_Wallet_Medium': -0.037, 'Dm_Item_Sheik_Harp': -0.250,
     'TBox_ArrowBundle_Large': -0.164, 'TBox_ArrowBundle_Medium': -0.093, 'TBox_ArrowBundle_Small': -0.102,
     'TBox_DekuSeedBundle': -0.130, 'TBox_Shield_Deku': -0.036, 'TBox_Shield_Hylian': -0.078,
 }
 # Rando items drawn with a game model (their ActorInfo row copies its model box):
 # progressive tokens with their family's first level (progressive.FAMILIES), souls
 # with the Poe spirit, Archipelago items with a Fire Medallion copy, key rings,
-# boss keys, maps and compasses with the native dungeon items.
+# boss keys, maps and compasses with the native dungeon items, songs with Sheik's
+# harp (patching/song_models.py: placed in a chest or as a pickup).
 MODEL_PREFIXES = (('Item_Soul_', 'Obj_Spirit_Poe'), ('Item_AP_', 'Item_Medal_Fire'),
                   ('Item_KeyRing_', 'Item_Dungeon_SmallKey'), ('Item_BossKey_', 'Item_Dungeon_BossKey'),
-                  ('Item_Map_', 'Item_Dungeon_Map'), ('Item_Compass_', 'Item_Dungeon_Compass'))
+                  ('Item_Map_', 'Item_Dungeon_Map'), ('Item_Compass_', 'Item_Dungeon_Compass'),
+                  ('Item_Melody_', 'Dm_Item_Sheik_Harp'))
 # Pouch-named models of the same mesh as the item's.
 SAME_MODEL = {'Weapon_Range_SlingShot': 'Item_Range_SlingShot', 'Weapon_Range_Bow': 'Item_Range_Bow'}
 
@@ -129,7 +134,7 @@ def ground_lift(before, after):
         return 0.0
     if after in GROUND_LIFT:
         return GROUND_LIFT[after]
-    if not after.startswith(WORLD_PREFIX):
+    if not after.startswith((WORLD_PREFIX, WATER_PREFIX)):
         return 0.0
     bottom = MODEL_BOTTOM.get(model_of(canonical_of(after)))
     # Scaled about its origin (world_scale), the model reaches lower still.
@@ -154,7 +159,7 @@ SMALL_MODELS = {
 
 def world_scale(actor):
     """Uniform map scale of a spot holding ``actor`` (1.0: none)."""
-    if not actor.startswith(WORLD_PREFIX):
+    if not actor.startswith((WORLD_PREFIX, WATER_PREFIX)):
         return 1.0
     extent = SMALL_MODELS.get(model_of(canonical_of(actor)))
     return 1.0 if extent is None else round(min(MAX_WORLD_SCALE, WORLD_SIZE / extent), 2)
@@ -170,11 +175,47 @@ def lifted(y, height):
 # or effect of its own (no SLink user; the Forest Medallion template of the tokens only
 # has an effect bound to its own model). Placed in the world on the gold token, it
 # shone with nothing and made no sound: a progressive Slingshot under Zora's River
-# water was only found with debug flight (Discord 17/11). Such a pickup now keeps the
-# token's golden aura and hum; an item with its own pickup sound keeps its own links.
+# water was only found with debug flight (Discord 17/11). Such a pickup keeps the
+# token's hum; an item with its own pickup sound keeps its own.
 def keeps_token_links(template, source_has_sound):
-    """A derived world pickup keeps the gold token's ELink/SLink (glow and hum)."""
+    """A derived world pickup keeps the gold token's SLink (hum)."""
     return template == WORLD_TEMPLATE and not source_has_sound
+
+
+# A world pickup without an effect of its own has none, except under water
+# (``WATER_PREFIX``, ``WATER_DROP_PREFIX``), where it is hard to see: there it takes
+# the gold token's glow (ELink user ``Obj_Token_Gold``, its golden aura, as on main).
+# Out of the water that aura drew a skulltula-token shape around every item (user
+# report 18/11); Ruto's bottle's glow was too faint under water and the moat
+# ocarina's drew an ocarina (18/11). Effects of the generated items' Forest Medallion
+# template are not theirs (bound to the medallion's model).
+GLOW_ACTOR = WORLD_TEMPLATE
+GLOW_PACK = WORLD_TEMPLATE
+GLOW_ELINK = f'Component/ELink/{GLOW_ACTOR}.engine__component__ELinkParam.bgyml'
+BORROWED_EFFECTS = ('Item_Medal_Forest',)
+
+
+# Items whose own effect is a glow on the ground: the native world pickups (heart
+# pieces, rupees...) and the spiritual stones. Any other own effect (a spell's, a
+# menu's) shows nothing on a pickup: under water such an item takes the glow too.
+GLOWING_PREFIXES = ('Item_Stone_',)
+
+
+def own_effect(canonical, user):
+    """Whether the ELink user ``user`` of ``canonical`` is its own pickup effect."""
+    return bool(user) and (user not in BORROWED_EFFECTS or user == canonical)
+
+
+def glows_by_itself(canonical, user):
+    """Whether ``canonical``'s own effect (ELink user ``user``) already glows on the ground."""
+    return own_effect(canonical, user) and (canonical in NATIVE_WORLD or canonical.startswith(GLOWING_PREFIXES))
+
+
+def keeps_own_effect(derived, canonical, user):
+    """A derived world pickup keeps its item's effect (else: the glow under water, none elsewhere)."""
+    if is_underwater(derived):
+        return glows_by_itself(canonical, user)
+    return own_effect(canonical, user)
 
 
 def _kit_native(actor):
@@ -184,12 +225,24 @@ def _kit_native(actor):
 
 
 def is_world_derived(actor):
-    return actor.startswith((WORLD_PREFIX, DROP_PREFIX)) or _kit_native(actor) is not None
+    return actor.startswith((WORLD_PREFIX, WATER_PREFIX, DROP_PREFIX, WATER_DROP_PREFIX))         or _kit_native(actor) is not None
+
+
+def underwater_actor(actor):
+    """The glowing form of a derived world pickup on a spot under water; other actors unchanged."""
+    for dry, wet in ((WORLD_PREFIX, WATER_PREFIX), (DROP_PREFIX, WATER_DROP_PREFIX)):
+        if actor.startswith(dry):
+            return wet + actor[len(dry):]
+    return actor
+
+
+def is_underwater(actor):
+    return actor.startswith((WATER_PREFIX, WATER_DROP_PREFIX))
 
 
 def world_template(derived):
     """Native pickup whose behaviour a derived world actor takes."""
-    return DROP_TEMPLATE if derived.startswith(DROP_PREFIX) else WORLD_TEMPLATE
+    return DROP_TEMPLATE if derived.startswith((DROP_PREFIX, WATER_DROP_PREFIX)) else WORLD_TEMPLATE
 
 
 def is_derived(actor):
@@ -270,7 +323,7 @@ def canonical_of(derived):
     native = _kit_native(derived)
     if native:
         return WORLD_CANONICAL[native]
-    for prefix in (WORLD_PREFIX, DROP_PREFIX, SHOP_PREFIX):
+    for prefix in (WORLD_PREFIX, WATER_PREFIX, DROP_PREFIX, WATER_DROP_PREFIX, SHOP_PREFIX):
         if derived.startswith(prefix):
             return derived[len(prefix):]
     raise ValueError('Not a derived actor: ' + derived)
@@ -380,16 +433,32 @@ def build_pack(derived, read_pack, codec):
         if key in source_components:
             components[key] = source_components[key]
             _copy_ref(source, source_components[key], files, codec)
-    if kind == 'world' and not keeps_token_links(template_name, 'SLinkRef' in source_components):
-        # Effects and sounds: the gold token's ELink user draws its golden
-        # token-shaped aura (and SLink its hum) around any model. Use the item's
-        # own ones, or none (Obj_Item_Base defines neither).
-        for key in LINK_KEYS:
-            if key in source_components:
-                components[key] = source_components[key]
-                _copy_ref(source, source_components[key], files, codec)
+    if kind == 'world':
+        # Effect: the item's own, else under water the gold token's glow, else none (see GLOW_ACTOR).
+        effect = source_components.get('ELinkRef')
+        effect_path = _pack_path(effect) if isinstance(effect, str) else None
+        if effect_path in source:
+            user = codec.load(source[effect_path])['root'].get('UserName')
+        else:   # shared effect parameters (not in the pack): the item's own
+            user = canonical if isinstance(effect, str) and effect else None
+        if keeps_own_effect(derived, canonical, user):
+            components['ELinkRef'] = effect
+            _copy_ref(source, effect, files, codec)
+        elif is_underwater(derived):
+            glow = read_pack(GLOW_PACK)
+            if glow is None or GLOW_ELINK not in glow:
+                raise ValueError('Pickup glow not found: ' + GLOW_ACTOR)
+            files[GLOW_ELINK] = glow[GLOW_ELINK]
+            components['ELinkRef'] = '?' + GLOW_ELINK
+        else:
+            components['ELinkRef'] = ''
+        # Sound: the item's own, else the gold token's hum (Obj_Item_Base has none).
+        if not keeps_token_links(template_name, 'SLinkRef' in source_components):
+            if 'SLinkRef' in source_components:
+                components['SLinkRef'] = source_components['SLinkRef']
+                _copy_ref(source, source_components['SLinkRef'], files, codec)
             else:
-                components.pop(key, None)
+                components.pop('SLinkRef', None)
     pouch_ref = source_components.get('PouchContentRef')
     if not isinstance(pouch_ref, str) or _pack_path(pouch_ref) not in source:
         raise ValueError('Pouch content not found for ' + canonical)
@@ -465,14 +534,16 @@ def add_rsdb_rows(tables, derived_list):
                 if source is None:
                     raise ValueError('Ligne ActorInfo absente : ' + canonical)
                 row['ActorName'] = source.get('ActorName', canonical)
-                keep_links = world and keeps_token_links(template, 'SLinkUserName' in source)
                 for key in MODEL_KEYS:
-                    if keep_links and key == 'ELinkUserName' and key in base:
-                        continue      # the token's glow (keeps_token_links)
                     if key in source:
                         row[key] = copy.deepcopy(source[key])
                     else:
                         row.pop(key, None)
+                if world and not keeps_own_effect(derived, canonical, source.get('ELinkUserName')):
+                    if is_underwater(derived):
+                        row['ELinkUserName'] = GLOW_ACTOR      # see GLOW_ACTOR
+                    else:
+                        row.pop('ELinkUserName', None)
                 if 'InstanceHeapSize' in source:
                     row['InstanceHeapSize'] = max(row.get('InstanceHeapSize', 0), source['InstanceHeapSize'])
             elif name == 'GameActorInfo' and source and 'ModelVariationAnims' in source:

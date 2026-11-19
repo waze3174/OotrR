@@ -97,8 +97,14 @@ LOCATION_KEYWORDS = {'Wolfos': 'Wolfos', 'Redead': 'ReDead', 'Moblin': 'Moblin',
 FLAG_PREFIX = 'IsGet.'
 
 
+# Exceptions to EXCLUDED_MARKERS: Phantom Ganon himself carries the 'Ganon' marker
+# that keeps Ganondorf and Ganon (the final fights) out. His painting performers
+# (``GhostPicturePerformer``) and dictionaries stay excluded.
+EXCLUDED_EXCEPTIONS = ('Enemy_DungeonBoss_PhantomGanon',)
+
+
 def family_of(actor):
-    if any(marker in actor for marker in EXCLUDED_MARKERS):
+    if actor not in EXCLUDED_EXCEPTIONS and any(marker in actor for marker in EXCLUDED_MARKERS):
         return None
     best = None
     for family, _, prefixes, _ in FAMILIES:
@@ -209,6 +215,17 @@ def resolve_room_locks(candidates):
     return candidates, door_edits
 
 
+# Families whose defeat the dungeon logic always expects (minibosses blocking
+# the way, Jabu-Jabu's tentacles), even if no map link says so.
+ALWAYS_MECHANICAL = ('BigOcto', 'DarkLink', 'FlareDancer', 'JabuTentacle')
+
+
+def is_mechanical(enemy):
+    if 'mechanics' not in enemy:
+        return True
+    return bool(enemy['mechanics']) or family_of(enemy['actor']) in ALWAYS_MECHANICAL
+
+
 def plan_souls(mode, enemies, logic_regions):
     """Return the soul items, map edits and logic requirements for ``mode``."""
     if mode == 'off':
@@ -239,7 +256,12 @@ def plan_souls(mode, enemies, logic_regions):
         if boss and mode != 'regional':
             boss_rooms[boss] = key
         else:
-            per_folder[enemy['folder']].add(key)
+            # Entering a dungeon needs only the souls whose enemies drive something
+            # (``remake_world.enemy_mechanics``); without its soul any other enemy
+            # is absent and its room only gets easier. Enemies scanned before the
+            # field existed (older Archipelago catalogs) count as mechanical.
+            if is_mechanical(enemy):
+                per_folder[enemy['folder']].add(key)
             per_map[enemy['resource']].add(key)
         edit = {'resource': enemy['resource'], 'index': enemy['index'], 'actor': enemy['actor'],
                 'hash': enemy['hash'], 'soul': key, 'flag': FLAG_PREFIX + soul_actor(soul_item(key))}
@@ -552,8 +574,9 @@ def soul_presence(flag, key, vanilla=None):
     read when the map loads) left the boss away until the dungeon was left and entered
     again, so the boss scene had no boss (15/11 report, Barinade). The lazy check, as the
     vanilla maps use for actors that appear or leave on a flag set in the map (Death
-    Mountain Tektites, Enemy Museum statues), follows the flag live. Other souls are
-    required to enter their dungeon, so they keep the immediate check.
+    Mountain Tektites, Enemy Museum statues), follows the flag live. Other souls keep
+    the immediate check: the ones whose enemies drive something are required to enter
+    their dungeon, and the others only bring back enemies the player can do without.
 
     ``vanilla``: the enemy's own Presence; the enemy then reads :func:`soul_expression`
     (lazy when either check is)."""

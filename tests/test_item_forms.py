@@ -4,8 +4,9 @@ import unittest
 
 from oot_rando.formats import byml_codec
 from oot_rando.formats.inspect_resources import sarc
-from oot_rando.game.item_forms import (DROP_PREFIX, DROP_TEMPLATE, NATIVE_WORLD, WORLD_POUCH_FLAGS, WORLD_TEMPLATE,
-                                       add_rsdb_rows, build_pack, canonical_of, form_actor, is_derived,
+from oot_rando.game.item_forms import (DROP_PREFIX, DROP_TEMPLATE, GLOW_ACTOR, GLOW_ELINK, NATIVE_WORLD,
+                                       WORLD_POUCH_FLAGS, WORLD_TEMPLATE,
+                                       add_rsdb_rows, build_pack, canonical_of, form_actor, is_derived, underwater_actor,
                                        is_world_derived, resolve_components, _table_components)
 
 # Components that make the gold token's AI save the skulltula it drops from
@@ -57,6 +58,7 @@ def fake_packs():
     for path in ('GameParameter/GameParameterTable/Obj_Item_Base.engine__actor__GameParameterTable.bgyml',
                  'GameParameter/DropBoundParam/Obj_Item_Base.game__drop__DropBoundParam.bgyml'):
         drop[path] = template[path]
+    template[GLOW_ELINK] = doc({'UserName': GLOW_ACTOR})   # the token's glow (GLOW_PACK)
     return {WORLD_TEMPLATE: template, DROP_TEMPLATE: drop, 'Item_BombBag_Small': source}
 
 
@@ -188,6 +190,8 @@ class SkulltulaDropTests(unittest.TestCase):
         for key in TOKEN_KIT_REFS:
             self.assertEqual(kit[key], f'Work/Component/{key}/Item_Token_Gold.gyml')
         self.assertEqual(kit['ModelInfoRef'], '?Component/ModelInfo/Obj_Rupee_Red.engine__component__ModelInfo.bgyml')
+        # No skulltula-shaped token aura, and no glow out of the water.
+        self.assertEqual(kit['ELinkRef'], '')
         pouch = byml_codec.load(files[kit['PouchContentRef'][1:]])['root']
         self.assertEqual({key: pouch[key] for key in WORLD_POUCH_FLAGS}, WORLD_POUCH_FLAGS)
         self.assertEqual(pouch['PouchActor'], 'Work/Actor/TBox_Rupee_Red.engine__actor__ActorParam.gyml')
@@ -297,29 +301,74 @@ class RealPackNameTests(unittest.TestCase):
 
     def test_derived_world_pickup_glow(self):
         # An item with its own pickup effect and sound (Heart Piece) keeps them; a key
-        # item without (Hover Boots) keeps the gold token's glow and hum (17/11: a
-        # progressive Slingshot under water could not be seen).
-        for canonical, expected in (('Obj_Heart_Piece', 'Obj_Heart_Piece'), ('Item_HoverBoot', WORLD_TEMPLATE)):
+        # item without (Hover Boots) takes the token's hum, and under water only Ruto's
+        # bottle's glow (17/11: a progressive Slingshot under water could not be seen;
+        # 18/11: the token's own effect draws a skulltula-shaped aura, the moat
+        # ocarina's an ocarina, and the glow is wanted under water only).
+        for canonical, effect, sound in (('Obj_Heart_Piece', 'Obj_Heart_Piece', 'Obj_Heart_Piece'),
+                                         ('Item_HoverBoot', GLOW_ACTOR, WORLD_TEMPLATE)):
             with self.subTest(canonical=canonical):
-                derived = form_actor(canonical, 'world', skulltula_drop=True)
+                derived = underwater_actor(form_actor(canonical, 'world', skulltula_drop=True))
                 files = sarc(build_pack(derived, self.read_pack, byml_codec)[0])
                 components = resolve_components(files, derived, byml_codec)
-                for key in ('ELinkRef', 'SLinkRef'):
-                    ref = components.get(key)
-                    self.assertIn(expected, ref)
+                self.assertIn(effect, components['ELinkRef'])
+                self.assertIn(sound, components['SLinkRef'])
+                user = byml_codec.load(files[components['ELinkRef'][1:]])['root']['UserName']
+                self.assertEqual(user, effect)
 
-    def test_world_rows_keep_the_token_glow_for_key_items(self):
+    def test_key_item_glows_under_water_only(self):
+        derived = form_actor('Item_HoverBoot', 'world')
+        self.assertEqual(underwater_actor(derived), 'Obj_RandoWater_Item_HoverBoot')
+        self.assertEqual(canonical_of(underwater_actor(derived)), 'Item_HoverBoot')
+        self.assertTrue(is_world_derived(underwater_actor(derived)))
+        self.assertEqual(underwater_actor('Obj_Rupee_Red'), 'Obj_Rupee_Red')   # native: own effect
+        dry = resolve_components(sarc(build_pack(derived, self.read_pack, byml_codec)[0]), derived, byml_codec)
+        self.assertEqual(dry['ELinkRef'], '')
+        self.assertIn(WORLD_TEMPLATE, dry['SLinkRef'])
+
+    def test_under_water_only_ground_glows_count_as_own(self):
+        from oot_rando.game.item_forms import keeps_own_effect
+        wet = underwater_actor(form_actor('Item_NayruLove', 'world'))
+        # A spell's own effect shows nothing on a pickup: the token's glow under water.
+        self.assertFalse(keeps_own_effect(wet, 'Item_NayruLove', 'Item_NayruLove'))
+        self.assertTrue(keeps_own_effect(form_actor('Item_NayruLove', 'world'), 'Item_NayruLove', 'Item_NayruLove'))
+        for canonical in ('Item_Stone_Forest', 'Obj_Heart_Piece'):
+            self.assertTrue(keeps_own_effect(underwater_actor(form_actor(canonical, 'world', True)), canonical, canonical))
+
+    def test_dropped_item_glows_under_water(self):
+        packs = fake_packs()
+        dry = DROP_PREFIX + 'Item_BombBag_Small'
+        wet = underwater_actor(dry)
+        self.assertEqual(wet, 'Obj_RandoWaterDrop_Item_BombBag_Small')
+        self.assertEqual(canonical_of(wet), 'Item_BombBag_Small')
+        raw, template = build_pack(wet, packs.get, byml_codec)
+        self.assertEqual(template, f'Pack/Actor/{DROP_TEMPLATE}.pack.zs')
+        files = sarc(raw)
+        self.assertEqual(resolve_components(files, wet, byml_codec)['ELinkRef'], '?' + GLOW_ELINK)
+        self.assertIn(GLOW_ELINK, files)
+        files = sarc(build_pack(dry, packs.get, byml_codec)[0])
+        self.assertEqual(resolve_components(files, dry, byml_codec)['ELinkRef'], '')
+
+    def test_world_rows_take_the_token_glow_under_water(self):
         def row(name, **extra):
             return dict({'__RowId': name}, **extra)
         token = row(WORLD_TEMPLATE, ELinkUserName=WORLD_TEMPLATE, SLinkUserName=WORLD_TEMPLATE)
         tables = {'ActorInfo': [token, row('Item_HoverBoot', FmdbName='Boots'),
-                                row('Obj_Heart_Piece', ELinkUserName='Obj_Heart_Piece', SLinkUserName='Obj_Heart_Piece')],
+                                row('Obj_Heart_Piece', ELinkUserName='Obj_Heart_Piece', SLinkUserName='Obj_Heart_Piece'),
+                                row('Item_Prog_Bow_1', ELinkUserName='Item_Medal_Forest')],
                   'GameActorInfo': [row(WORLD_TEMPLATE)], 'PouchActorInfo': [row(WORLD_TEMPLATE)]}
-        boots, heart = form_actor('Item_HoverBoot', 'world', True), form_actor('Obj_Heart_Piece', 'world', True)
-        add_rsdb_rows(tables, [boots, heart])
+        boots = underwater_actor(form_actor('Item_HoverBoot', 'world', True))
+        heart = underwater_actor(form_actor('Obj_Heart_Piece', 'world', True))
+        bow = underwater_actor(form_actor('Item_Prog_Bow_1', 'world', True))
+        dry = form_actor('Item_HoverBoot', 'world', True)
+        add_rsdb_rows(tables, [boots, heart, bow, dry])
         rows = {r['__RowId']: r for r in tables['ActorInfo']}
-        self.assertEqual((rows[boots]['ELinkUserName'], rows[boots]['FmdbName']), (WORLD_TEMPLATE, 'Boots'))
+        self.assertEqual((rows[boots]['ELinkUserName'], rows[boots]['FmdbName']), (GLOW_ACTOR, 'Boots'))
         self.assertEqual(rows[heart]['ELinkUserName'], 'Obj_Heart_Piece')
+        # The medallion template's effect is not the token's own.
+        self.assertEqual(rows[bow]['ELinkUserName'], GLOW_ACTOR)
+        self.assertEqual(rows[boots]['ELinkUserName'], WORLD_TEMPLATE)   # main's token glow
+        self.assertNotIn('ELinkUserName', rows[dry])   # out of the water: no glow
 
     def test_every_skulltula_drop_is_a_token_kit(self):
         """What REALAZK's kit check verifies (pickup_pack/kit.rs, MIT, ae9e4063): the

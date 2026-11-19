@@ -62,16 +62,16 @@
    "why": "Same as Colossus Great Fairy Reward."
   },
   "Sheik at Temple": {
-   "rule": "is_adult and 'Forest Temple Clear'",
-   "why": "Sheik's Temple of Time scene follows the Forest Sage's awakening (boss beaten), not the Forest Medallion held: a starting medallion only fills the pouch."
+   "rule": "is_adult and Forest_Medallion",
+   "why": "The patched Prelude of Light trigger checks the Forest Medallion held, independently of the Forest Sage's awakening."
   },
   "Sheik in Kakariko": {
    "rule": "is_adult and 'Forest Temple Clear' and 'Fire Temple Clear' and 'Water Temple Clear'",
    "why": "Same reason as Sheik at Temple: the scene follows the three sages awakened, not the three medallions held."
   },
   "ToT Light Arrows Cutscene": {
-   "rule": "is_adult and can_trigger_lacs and (lacs_condition != 'vanilla' or ('Shadow Temple Clear' and 'Spirit Temple Clear'))",
-   "why": "With the vanilla condition, Zelda appears after the Shadow and Spirit Sages are awakened (bosses beaten), not on the two medallions held (starting medallions)."
+   "rule": "is_adult and can_trigger_lacs",
+   "why": "The patched adult Temple of Time trigger checks the Shadow and Spirit Medallions held, independently of the sages' awakening scenes."
   },
   "Song from Malon": {
    "rule": "is_child and 'Met Zelda' and Ocarina and at_day",
@@ -83,6 +83,18 @@
   }
  },
  "exit_rules": {
+  "Death Mountain Summit -> DMC Upper Local": {
+   "rule": "is_adult",
+   "why": "Child Death Mountain Crater actors are excluded from the shuffle and logic; only the adult crater is considered."
+  },
+  "Bolero of Fire Warp -> DMC Central Local": {
+   "rule": "is_adult",
+   "why": "The warp must not reintroduce excluded child crater checks or child bean planting into the logic."
+  },
+  "Root -> HC Garden Locations": {
+   "rule": "shuffle_child_trade == 'skip_child_zelda' or skip_child_zelda",
+   "why": "Child Hyrule Castle skipped (patching/child_castle_skip.py): Zelda and Impa are met from the start ('Met Zelda'), their checks hold green rupees."
+  },
   "ZR Front -> Zora River": {
    "rule": "can_blast_or_smash",
    "why": "The remake does not let adult Link hop past the boulder at the river mouth: it must be blown up or smashed. The seed now makes the river mouth air walls child-only (story_fixes.zora_river_wall_edits); this rule stays until adult Link is seen passing in game, then AP's 'is_adult or has_explosives' can come back."

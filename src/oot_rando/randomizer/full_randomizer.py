@@ -12,7 +12,7 @@ from oot_rando.logic import rando_options
 from oot_rando.game.remake_world import (PROGRESSIVE, BASE_REQUIRED, STATIC_TIER_SOURCES, item_actor,
                           match_locations, coverage_summary, FOLDER_DUNGEON,
                           ZONE_LABELS, TRACKED_TYPES, location_zone, source_age, zone_label)
-from oot_rando.game.item_forms import can_take, form_actor
+from oot_rando.game.item_forms import can_take, form_actor, underwater_actor
 from oot_rando.game.extra_sources import match_sources, area_locations
 from oot_rando.patching.soul_adapter import plan_souls, chest_requirements, soul_label
 from oot_rando.patching.song_adapter import POSE_AFTER_CUTSCENE, is_song_actor, song_allowed
@@ -78,6 +78,8 @@ def enabled_sources(options):
                                 ('npc', 'shuffle_npc_gifts', False), ('boss', 'shuffle_boss_rewards', False),
                                 ('bossheart', 'shuffle_boss_rewards', False), ('fairy', 'shuffle_great_fairies', False),
                                 ('quest', 'shuffle_quest_rewards', False), ('scrub', 'shuffle_scrubs', 'off'),
+                                ('master_sword', 'shuffle_master_sword', False),
+                                ('gerudo_card', 'shuffle_gerudo_card', False),
                                 ('song', 'shuffle_song_items', 'song')):
         value = options.get(option, off)
         if value != off:
@@ -106,6 +108,21 @@ def letter_removed(options):
     """With the Kakariko gate open the letter has no use left (only the gate guard
     reads it): it leaves the item pool and Zelda's gift is shuffled like the others."""
     return options.get('open_kakariko') == 'open'
+
+
+# Child Hyrule Castle skipped (``skip_child_zelda``, patching/child_castle_skip.py):
+# the castle's gifts never play, its shuffled checks hold this item (Great Fairy apart).
+CASTLE_FOLDER = 'HyruleCastle'
+CASTLE_GIFTS = ('HC Zeldas Letter', 'Song from Impa')
+CASTLE_JUNK = 'Rupee (1)'
+CASTLE_SONG = 'Zeldas Lullaby'
+
+
+def skipped_castle_check(entry):
+    """True for a check of the child castle grounds or one of the castle's gifts."""
+    ap = list(entry.get('ap') or ())
+    return entry.get('folder') == CASTLE_FOLDER or (
+        entry.get('source') in ('quest', 'song') and len(ap) == 1 and ap[0] in CASTLE_GIFTS)
 
 
 def kept_for_child_trade(entry, options):
@@ -150,7 +167,9 @@ def ap_settings(options, open_forest):
                                                'bridge', 'trials',
                                                'shuffle_ganon_bosskey', 'big_poe_count', 'chicken_count',
                                                'free_scarecrow', 'shuffle_child_trade', 'logic_rules',
-                                               'logic_no_night_tokens_without_suns_song')}
+                                               'shuffle_master_sword', 'shuffle_gerudo_card',
+                                               'logic_no_night_tokens_without_suns_song',
+                                               'skip_child_zelda')}
     values['open_forest'] = 'closed_deku' if open_forest else 'closed'
     # AP rules' ``keysanity``: false lets one Fire Temple door open without its key
     # ("Fire Temple Lower Locked Door": (Small Key, 8) or not keysanity), OoTR's
@@ -436,7 +455,37 @@ def prepare(data, options, groups, enemies, seed_key, open_forest=True, progress
             if item in pool:
                 pool[pool.index(item)] = POOL_FILLER
                 from_pool[item] += 1
-    logic_locations = sorted(g for g in shuffled if vname(g) in logic.virtual)
+    castle_junk = []
+    if options.get('skip_child_zelda'):
+        # The castle's gifts never play (patching/child_castle_skip.py): Zelda's Letter
+        # and Lullaby leave their vanilla locations and are shuffled elsewhere.
+        from oot_rando.patching.child_castle_skip import MOVED_ITEMS
+        reserved = Counter()
+
+        def take_filler(item, what):
+            fillers = [i for i in pool if i not in relevant and not is_mapcompass(i) and not is_key(i)
+                       and not (i == CASTLE_JUNK and reserved[i] >= pool.count(CASTLE_JUNK))]
+            if not fillers:
+                raise FillError(f'Not enough filler for {what}.')
+            victim = min(fillers, key=lambda i: FILLER_PRIORITY.index(i) if i in FILLER_PRIORITY else 99)
+            pool[pool.index(victim)] = item
+
+        for location in CASTLE_GIFTS:
+            base[location] = None
+        for gid, entry in matches.items():
+            if set(entry.get('ap', ())) & set(CASTLE_GIFTS):
+                # Native quest rewards also have a virtual location, even when
+                # child-trade protection keeps their source out of the shuffle.
+                base[vname(gid)] = None
+        for item in MOVED_ITEMS:
+            if item not in pool and item not in start_items:
+                take_filler(item, item + ' (skipped castle)')
+        # Every shuffled castle check holds a green rupee, reserved in the pool.
+        castle_junk = sorted(g for g in shuffled if skipped_castle_check(shuffled[g]))
+        for _ in castle_junk:
+            take_filler(CASTLE_JUNK, 'the skipped castle checks')
+            reserved[CASTLE_JUNK] += 1
+    logic_locations =sorted(g for g in shuffled if vname(g) in logic.virtual)
     restricted_dungeon = {}   # item -> (zone rule, dungeon)
     for item in set(pool):
         if item in ring_keys.values():
@@ -466,7 +515,11 @@ def prepare(data, options, groups, enemies, seed_key, open_forest=True, progress
             canonical_cache[key] = item_actor(item, shuffled[gid]['folder'])
         return canonical_cache[key]
 
+    castle_junk_set = set(castle_junk) if options.get('skip_child_zelda') else None
+
     def allowed(item, gid):
+        if castle_junk_set and gid in castle_junk_set:
+            return item == CASTLE_JUNK
         rule, dungeon = restricted_dungeon.get(item, (None, None))
         if rule == 'dungeon' and folder_dungeon[gid] != dungeon:
             return False
@@ -475,11 +528,17 @@ def prepare(data, options, groups, enemies, seed_key, open_forest=True, progress
         if rule == 'overworld' and folder_dungeon[gid] is not None:
             return False
         actor = canonical(item, gid)
-        if not song_allowed(options.get('shuffle_song_items', 'song'), shuffled[gid]['source'], actor):
+        song_mode = options.get('shuffle_song_items', 'song')
+        if castle_junk_set is not None and item == CASTLE_SONG:
+            # The castle skipped, Impa's song has no song location left: it goes
+            # anywhere a song can be given, whatever the song mode.
+            song_mode = 'everywhere'
+        if not song_allowed(song_mode, shuffled[gid]['source'], actor, shuffled[gid]['form']):
             return False
         if is_song_actor(actor) and set(shuffled[gid].get('ap', ())) & set(POSE_AFTER_CUTSCENE):
             return False   # given back in game with a pose (qol_patches.give_gift_after), not text-only
-        return can_take(actor, shuffled[gid]['form'], shuffled[gid].get('ap', ()), shuffled[gid].get('actor', ''))
+        return can_take(actor, shuffled[gid]['form'], shuffled[gid].get('ap', ()),
+                        shuffled[gid].get('actor', ''))
 
     # OoTR/AP vanilla-key compensation: with vanilla Fire Temple keys the logic
     # starts with one extra key (the vanilla layout expects the hammer door order).
@@ -503,7 +562,7 @@ def prepare(data, options, groups, enemies, seed_key, open_forest=True, progress
         pool=pool, relevant=relevant, progression=progression, logic_locations=logic_locations,
         restricted_dungeon=restricted_dungeon, allowed=allowed, sweep=sweep, base=base, souls=souls,
         unmatched_ap=unmatched_ap, natives=natives, starting=starting, report=report,
-        start_items=start_items, start_actors=start_actors,
+        start_items=start_items, start_actors=start_actors, castle_junk=castle_junk,
         is_key=is_key, is_mapcompass=is_mapcompass)
 
 
@@ -529,10 +588,11 @@ def plan(data, options, groups, enemies, seed_key, open_forest=True, progress=No
 
     last_error = 'no attempt'
     for attempt in range(MAX_ATTEMPTS):
-        placed = {}
+        placed = {gid: CASTLE_JUNK for gid in c.castle_junk}
         failed = False
         rest = [i for i in pool if i not in relevant]
         rest_counter = Counter(rest)
+        rest_counter[CASTLE_JUNK] -= len(c.castle_junk)
         # Dungeon-bound items outside the logic (maps, compasses) first, in
         # chests the logic cannot use whenever possible.
         for item in rng.shuffle([i for i in rest if i in restricted_dungeon]):
@@ -763,9 +823,18 @@ def progressive_plan(placed, natives):
         form = entry.get('form', 'chest')
         records.append({'id': gid, 'folder': entry['folder'], 'source': entry.get('source', 'chest'), 'form': form,
                         'item': entry['vanilla'], 'before': entry['before'], 'token': tokens[gid],
-                        'after': form_actor(tokens[gid], form), 'patches': _patches(entry),
+                        'after': _spot_actor(form_actor(tokens[gid], form), entry), 'patches': _patches(entry),
                         'resources': sorted({v['resource'] for v in entry['variants']})})
     return {'tokens': {gid: tokens[gid] for gid, _ in copies if gid in placed}, 'natives': records}
+
+
+def _underwater(entry):
+    return any(v.get('underwater') for v in entry['variants'])
+
+
+def _spot_actor(actor, entry):
+    """``actor``, in its glowing form when the spot lies under water (``game/underwater.py``)."""
+    return underwater_actor(actor) if _underwater(entry) else actor
 
 
 def _result(data, logic, options, matches, shuffled, placed, natives, sphere_of, spheres, souls,
@@ -786,7 +855,8 @@ def _result(data, logic, options, matches, shuffled, placed, natives, sphere_of,
                 and options['shuffle_mapcompass'] in ('any_dungeon', 'overworld', 'keysanity')):
             from oot_rando.patching.key_adapter import specific_actor
             canonical = specific_actor(item)   # sets its own dungeon's map / compass anywhere
-        actor = form_actor(canonical, entry.get('form', 'chest'), skulltula_drop=source == 'skulltula')
+        actor = _spot_actor(form_actor(canonical, entry.get('form', 'chest'), skulltula_drop=source == 'skulltula'),
+                            entry)
         name = check_name(entry, gid)
         placements.append({'id': gid, 'folder': entry['folder'], 'hash': entry['hash'], 'kind': entry['kind'],
                            'source': source, 'form': entry.get('form', 'chest'),
@@ -794,7 +864,8 @@ def _result(data, logic, options, matches, shuffled, placed, natives, sphere_of,
                            'resources': sorted({v['resource'] for v in entry['variants']}),
                            'variants': [(v['resource'], v['index']) for v in entry['variants'] if 'index' in v],
                            'patches': _patches(entry), 'ap_locations': entry['ap'],
-                           'sphere': sphere_of.get(vname(gid)), 'event': entry['event']})
+                           'sphere': sphere_of.get(vname(gid)), 'event': entry['event'],
+                           'underwater': _underwater(entry)})
         spoiler.append({'id': gid, 'location': name, 'item': soul_label(item) if item.startswith('Soul (') else item,
                         'ap_item': item, 'actor': actor, 'before': entry['before'], 'source': source,
                         'sphere': sphere_of.get(vname(gid)), 'ap_locations': entry['ap']})

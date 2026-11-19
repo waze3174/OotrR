@@ -91,8 +91,12 @@ class WorldScaleTests(unittest.TestCase):
             low, high = rows[actor]['ModelAabbMin'], rows[actor]['ModelAabbMax']
             self.assertAlmostEqual(max(high[k] - low[k] for k in 'XYZ'), extent, delta=0.002, msg=actor)
             self.assertLess(extent, WORLD_SIZE)
+        # Rando-built actors take their ActorInfo model box from a native weapon.
+        from oot_rando.patching.master_sword_item import MASTER_SWORD_ACTOR, WEAPON
+        derived = {MASTER_SWORD_ACTOR: WEAPON}
         for actor, bottom in MODEL_BOTTOM.items():
-            self.assertAlmostEqual(rows[actor]['ModelAabbMin']['Y'], bottom, delta=0.002, msg=actor)
+            row = rows[derived.get(actor, actor)]
+            self.assertAlmostEqual(row['ModelAabbMin']['Y'], bottom, delta=0.002, msg=actor)
         for actor, row in rows.items():
             low = (row.get('ModelAabbMin') or {}).get('Y', 0.0)
             if actor.startswith(('Item_', 'TBox_')) and -1 < low < -0.02 and not actor.endswith(

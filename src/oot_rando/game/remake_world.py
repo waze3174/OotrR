@@ -157,6 +157,8 @@ ACTOR_ITEMS = {
     'Item_ZeldaLetter': 'Zeldas Letter', 'Item_Arrow_Light': 'Light Arrows',
     'Item_Bottle_Letter': 'Rutos Letter',
     'Item_Sword_Biggoron': 'Biggoron Sword',
+    'Weapon_Sword_Master': 'Master Sword', 'Item_Rando_MasterSword': 'Master Sword',
+    'Item_Token_Gerudo': 'Gerudo Membership Card',
     # Songs (pouch actors given by the song cutscenes, see patching/song_adapter.py).
     'Item_Melody_ZeldaLullaby': 'Zeldas Lullaby', 'Item_Melody_EponaSong': 'Eponas Song',
     'Item_Melody_SariaSong': 'Sarias Song', 'Item_Melody_SunSong': 'Suns Song',
@@ -297,6 +299,64 @@ def enemy_counter_locks(path, root):
     return locks
 
 
+# Actors an enemy may be linked to without its defeat doing anything: movement
+# paths, camera/start anchors, map icons, entrance cutscenes. Shutters are the
+# room locks (``enemy_counter_locks``), handled by soul door edits.
+INERT_LINKS = ('DestinationAnchor', 'StartPos', 'MapIconOffsetAnchor', 'AnchorAction',
+               'FieldAndDungeonEntranceEventRequestActor')
+# Dynamic parameters of an enemy that tie it to a scripted sequence: appears for
+# an event (minibosses, bosses), takes part in an ordered puzzle (Deku 2-3-1).
+MECHANIC_PARAMS = ('IsIntendedForEventAppear', 'DefeatedOrder', 'ShootOrder', 'TalkEventName')
+
+
+def enemy_mechanics(root):
+    """Enemy hash → what its defeat (or presence) drives besides room locks.
+
+    An enemy is *mechanical* when it is linked (directly, or through an
+    ``EventRequestActor``/``Obj_EnemyCounter``) to an actor that is neither
+    another enemy, a shutter nor an inert anchor (a chest, a switch, a platform,
+    a fuse…), or carries one of ``MECHANIC_PARAMS``. Without its soul such an
+    enemy is absent and what it drives may never happen; any other enemy only
+    makes its room harder, so its absence never blocks the player.
+    """
+    actors = root.get('Actors', [])
+    by_hash = {a['Hash']: a for a in actors if type(a.get('Hash')) is int}
+    incoming = defaultdict(list)
+    for actor in actors:
+        for link in actor.get('Links', []) or []:
+            if isinstance(link, dict) and link.get('Dst') in by_hash:
+                incoming[link['Dst']].append(actor)
+
+    def neighbours(actor):
+        return [by_hash[l['Dst']] for l in actor.get('Links', []) or []
+                if isinstance(l, dict) and l.get('Dst') in by_hash] + incoming[actor['Hash']]
+
+    def meaningful(actor):
+        name = actor.get('Gyaml', '')
+        return not (name.startswith('Enemy_') or 'Shutter' in name or name.startswith(INERT_LINKS))
+
+    result = {}
+    for enemy in actors:
+        if not enemy.get('Gyaml', '').startswith('Enemy_') or type(enemy.get('Hash')) is not int:
+            continue
+        dynamic = enemy.get('Dynamic') if isinstance(enemy.get('Dynamic'), dict) else {}
+        reasons = {'param:' + key for key in MECHANIC_PARAMS if dynamic.get(key) not in (None, False, '')}
+        for other in neighbours(enemy):
+            name = other.get('Gyaml', '')
+            if name == 'EventRequestActor' or name.startswith('Obj_EnemyCounter'):
+                hops = [other]
+                if name.startswith('Obj_EnemyCounter'):
+                    hops += [a for a in incoming[other['Hash']] if a.get('Gyaml') == 'EventRequestActor']
+                for hop in hops:
+                    reasons |= {a['Gyaml'] for a in neighbours(hop) if meaningful(a)
+                                and a.get('Gyaml') != 'EventRequestActor'
+                                and not a.get('Gyaml', '').startswith('Obj_EnemyCounter')}
+            elif meaningful(other):
+                reasons.add(name)
+        result[enemy['Hash']] = sorted(reasons)
+    return result
+
+
 def scan_maps(nup, dictionaries, members, progress=None):
     """Return decoded maps, chest groups and enemy instances (read-only)."""
     from oot_rando.formats.inspect_resources import Byml, decompress  # zstd: not needed by the logic
@@ -314,7 +374,10 @@ def scan_maps(nup, dictionaries, members, progress=None):
         maps[path] = {'raw': raw, 'root': root, 'compressed': compressed}
         folder = path.split('/')[1]
         room_locks = enemy_counter_locks(path, root)
+        mechanics = enemy_mechanics(root)
         for actor_index, actor in enumerate(root.get('Actors', [])):
+            if inaccessible_child_actor(path, actor):
+                continue
             name = actor.get('Gyaml', '')
             if BLAST_WALL.match(name) and isinstance(actor.get('Translate'), list):
                 walls[folder].append((map_age(path), actor['Translate']))
@@ -332,7 +395,8 @@ def scan_maps(nup, dictionaries, members, progress=None):
             elif name.startswith('Enemy_'):
                 enemies.append({'resource': path, 'index': actor_index, 'actor': name, 'folder': folder,
                                 'hash': str(actor['Hash']), 'presence': actor.get('Presence'),
-                                'locks': room_locks.get(actor['Hash'], [])})
+                                'locks': room_locks.get(actor['Hash'], []),
+                                'mechanics': mechanics.get(actor['Hash'], [])})
     for variants in groups.values():
         for variant in variants:
             variant['behind_wall'] = _behind_wall(variant, walls[variant['folder']])
@@ -343,6 +407,28 @@ def scan_maps(nup, dictionaries, members, progress=None):
 def map_age(path):
     """Age of a remake map file (None: a map both ages share)."""
     return 'child' if '_Child_' in path else 'adult' if '_Adult_' in path else None
+
+
+def inaccessible_child_actor(path, actor):
+    """Child actors kept out of the shuffle and the logic.
+
+    * Every actor of the child Death Mountain Crater maps: they stay vanilla,
+      and a source shared by both ages keeps only its adult copy.
+    * The unreachable fortress bank of Gerudo Valley, including its buried
+      grotto: the child map contains these actors despite the bridge being
+      impassable. The far plateau is west of x=-15 at y~100; its grotto is at
+      y~84. Keep the lower river ledges (y~48) and crate/heart ledge (x~-9, y~90).
+
+    Filter candidates only: decoded maps and original actor indices stay intact.
+    """
+    if map_age(path) != 'child':
+        return False
+    if path.startswith('Banc/DeathMountainCrater/'):
+        return True
+    position = actor.get('Translate')
+    return (path.startswith('Banc/GerudoValley/')
+            and isinstance(position, list) and len(position) == 3
+            and position[0] < -15 and position[1] >= 80)
 
 
 def source_age(variants):

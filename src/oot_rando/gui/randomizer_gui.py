@@ -56,6 +56,7 @@ TRACKER_KINDS = {
     'vanilla_boss': 'Boss', 'vanilla_bossheart': 'Heart Container', 'vanilla_cutscene': 'Cutscene',
     'vanilla_rupeetower': 'Rupee tower', 'full_boss': 'Dungeon reward', 'full_bossheart': 'Boss heart container',
     'full_fairy': 'Great fairy', 'full_quest': 'Quest reward', 'full_song': 'Song',
+    'full_master_sword': 'Master Sword', 'full_gerudo_card': 'Gerudo Membership Card',
 }
 
 OPTION_COPY = {
@@ -164,6 +165,10 @@ OPTION_TIPS = {
                             'every kind of enemy has its own soul. A new game is required.',
     'big_poe_count': 'The Poe collector gives his reward after this many Big Poes (vanilla: 10). '
                      'To be confirmed in game.',
+    'skip_child_zelda': 'Start as if Malon, Talon, Zelda and Impa had been met: Zelda\'s Letter and Lullaby '
+                        'are shuffled elsewhere. The child castle grounds become optional: their shuffled checks hold '
+                        'green rupees, except the Great Fairy. Later events keep their conditions (Kokiri '
+                        'Forest exit after the Deku Tree...). New save required. To be confirmed in game.',
 }
 # Settings page layout: (card title, card note, [option names]). "game:" names are the
 # general settings of the application (Settings fields), the others complete-mode options.
@@ -171,11 +176,12 @@ OPTION_TIPS = {
 SETTING_GROUPS = (
     ('Open world', 'Zones and quests open from the start.',
      ['game:open_forest', 'open_kakariko', 'open_door_of_time', 'zora_fountain', 'gerudo_fortress',
-      'open_gerudo_valley_bridge']),
+      'open_gerudo_valley_bridge', 'skip_child_zelda']),
     ('Logic and accessibility', '',
      ['accessibility', 'logic_no_night_tokens_without_suns_song', 'game:skulltulas_always_present']),
     ('Item pool', 'What is shuffled and what you start with.',
-     ['item_pool_value', 'start_inventory_from_pool', 'shuffle_kokiri_sword', 'shuffle_remake_items']),
+     ['item_pool_value', 'start_inventory_from_pool', 'shuffle_kokiri_sword',
+      'shuffle_master_sword', 'shuffle_gerudo_card', 'shuffle_remake_items']),
     ('Shuffled locations', 'Where items can be found.',
      ['shuffle_chests', 'chest_matching', 'tokensanity', 'shuffle_freestanding_items', 'shuffle_npc_gifts',
       'shuffle_quest_rewards', 'shuffle_boss_rewards', 'shuffle_great_fairies', 'shuffle_song_items',
@@ -1819,6 +1825,9 @@ class Application:
                 label = 'Done' if completed else {'available': 'Available', 'partial': 'Partial zone', 'blocked': 'Blocked', 'unknown': 'Unknown'}.get(access, 'Unknown')
                 if completed and state.get('source') == 'manual':
                     label += ' (manual)'
+                elif not completed and state.get('missing_souls'):
+                    from oot_rando.patching.soul_adapter import soul_name
+                    label += ' • soul: ' + ', '.join(soul_name(s, False) for s in state['missing_souls'])
                 tree.insert(zones[region], 'end', iid=check['id'], text=name, values=(label, reward, kind), tags=('done' if completed else access,))
                 visible += 1
             tree.bind('<<TreeviewOpen>>', lambda event, widget=tree: self.remember_zone(widget, True))
