@@ -165,9 +165,13 @@ class LogicTests(unittest.TestCase):
         _, collected, _ = logic.sweep(placements, logic.new_state(Counter(counts)))
         return set(self.ESCAPE) & set(collected)
 
-    def test_the_default_asks_for_every_stone(self):
-        self.assertEqual(Logic(self.data).settings['spiritual_stones'], 'all')
+    def test_new_seeds_ask_for_every_stone_and_older_logic_settings_for_two(self):
         self.assertEqual(rando_options.defaults()['spiritual_stones'], 'all')
+        # The logic settings an earlier seed's tracker kept do not name the option.
+        older = Logic(self.data, {'open_forest': 'closed_deku'})
+        self.assertEqual(older.settings['spiritual_stones'], 'vanilla')
+        self.assertEqual(self.escape_found(older, {'Goron Ruby': 1, 'Zora Sapphire': 1, 'Met Zelda': 1}),
+                         set(self.ESCAPE))
 
     def test_escape_waits_for_zelda_and_the_stones(self):
         # Zelda's escape and the Door of Time (DoorOfTime) follow Zelda and the stones held

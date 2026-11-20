@@ -80,15 +80,18 @@ class OptionTests(unittest.TestCase):
         imported, ignored = rando_options.from_ap_yaml(rando_options.to_ap_yaml(
             rando_options.validate({'spiritual_stones': 'vanilla'})))
         self.assertEqual((imported['spiritual_stones'], ignored), ('vanilla', []))
-        older, _ = rando_options.from_ap_yaml('game: OoT Remake\nOoT Remake:\n  open_kakariko: open\n')
-        self.assertEqual(older['spiritual_stones'], 'all')
+        newer, _ = rando_options.from_ap_yaml('game: OoT Remake\nOoT Remake:\n  open_kakariko: open\n')
+        self.assertEqual(newer['spiritual_stones'], 'all')   # a YAML starts a new seed
 
     def test_recorded_options_leave_out_the_unrecorded_value(self):
+        # The builds before the option asked for two stones: stored settings without it mean Vanilla.
         values = rando_options.defaults()
-        self.assertNotIn('spiritual_stones', rando_options.recorded(values))
-        self.assertEqual(rando_options.recorded(dict(values, spiritual_stones='vanilla'))['spiritual_stones'], 'vanilla')
-        self.assertEqual(rando_options.stored_value({}, 'spiritual_stones'), 'all')
-        self.assertEqual(rando_options.stored_value({'spiritual_stones': 'vanilla'}, 'spiritual_stones'), 'vanilla')
+        self.assertEqual(rando_options.recorded(values)['spiritual_stones'], 'all')
+        self.assertNotIn('spiritual_stones', rando_options.recorded(dict(values, spiritual_stones='vanilla')))
+        self.assertEqual(rando_options.restored({})['spiritual_stones'], 'vanilla')
+        self.assertEqual(rando_options.restored({'spiritual_stones': 'all'})['spiritual_stones'], 'all')
+        self.assertEqual(rando_options.stored_value({}, 'spiritual_stones'), 'vanilla')
+        self.assertEqual(rando_options.stored_value({'spiritual_stones': 'all'}, 'spiritual_stones'), 'all')
         self.assertEqual(rando_options.stored_value({}, 'open_kakariko'), 'closed')
 
     def test_apworld_specs_skip_the_inventory(self):

@@ -119,6 +119,20 @@ class Units(unittest.TestCase):
         with self.assertRaises(ValueError):
             Settings.from_dict(dict(settings.to_dict(), full=dict(settings.full, tokensanity='all')))
 
+    def test_patches_made_before_the_option_stay_vanilla(self):
+        from oot_rando.randomizer.randomizer_core import Settings, settings_identity
+        old = dict(rando_options.defaults())
+        del old['spiritual_stones']
+        settings = bridge.settings_from_patch(sample_patch(options=old))
+        self.assertEqual(settings.full['spiritual_stones'], 'vanilla')
+        self.assertNotIn('spiritual_stones', settings.to_dict()['full'])
+        again = Settings.from_dict(json.loads(json.dumps(settings.to_dict())))
+        self.assertEqual((again.full['spiritual_stones'], settings_identity(again)),
+                         ('vanilla', settings_identity(settings)))
+        new = bridge.settings_from_patch(sample_patch())
+        self.assertEqual(new.full['spiritual_stones'], 'all')
+        self.assertEqual(new.to_dict()['full']['spiritual_stones'], 'all')
+
     def test_starting_actors(self):
         from oot_rando.randomizer.full_randomizer import FillError, starting_actors
         from oot_rando.patching.event_patch import starting_item_events

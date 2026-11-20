@@ -93,9 +93,9 @@ class EscapeStoneUnits(unittest.TestCase):
         for value, stones in s.STONE_SETS.items():
             self.assertEqual(s.escape_stones({'spiritual_stones': value}), stones)
 
-    def test_stored_options_without_the_option_ask_for_every_stone(self):
-        # Seeds made before the option (upstream's) asked for the three stones.
-        self.assertEqual(s.escape_stones({}), s.STONE_SETS['all'])
+    def test_stored_options_without_the_option_ask_for_two_stones(self):
+        # Seeds made before the option asked for the Goron Ruby and the Zora Sapphire.
+        self.assertEqual(s.escape_stones({}), s.STONE_SETS['vanilla'])
         self.assertEqual(s.escape_stones(rando_options.recorded(rando_options.defaults())), s.STONE_SETS['all'])
 
     def test_the_story_fixes_carry_the_chosen_stones(self):

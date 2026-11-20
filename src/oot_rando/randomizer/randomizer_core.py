@@ -134,7 +134,8 @@ class Settings:
         if self.archipelago is not None:
             from oot_rando.archipelago.bridge import check_patch
             check_patch(self.archipelago)
-            if self.full is None or self.full != rando_options.validate(self.archipelago['options']):
+            if self.full is None or self.full != rando_options.validate(
+                    rando_options.restored(self.archipelago['options'])):
                 raise ValueError('The full randomizer options must be those of the Archipelago patch.')
             if self.open_forest != self.archipelago['open_forest']:
                 raise ValueError('"Open the way" must match the Archipelago patch.')
@@ -187,6 +188,8 @@ class Settings:
             raise ValueError('Unknown settings or invalid format.')
         if 'seed' not in value:
             raise ValueError('The seed is required.')
+        if isinstance(value.get('full'), dict):
+            value['full'] = rando_options.restored(value['full'])
         return cls(**value).validate()
 
 

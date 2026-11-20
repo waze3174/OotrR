@@ -35,23 +35,23 @@ class SettingsTests(unittest.TestCase):
         self.assertNotEqual(settings_identity(a), settings_identity(Settings(a.seed, open_forest=False)))
         self.assertTrue(all(placements_for(a)[h] != old for h, old in CHESTS.items()))
 
-    def test_require_all_keeps_the_identity_of_seeds_made_before_the_option(self):
+    def test_settings_made_before_the_option_stay_vanilla(self):
+        # What the builds before ``spiritual_stones`` stored: they asked for two stones, and the key is missing.
+        stored = full_settings().to_dict()
+        del stored['full']['spiritual_stones']
+        for settings in (Settings.from_dict(json.loads(json.dumps(stored))), full_settings(spiritual_stones='vanilla')):
+            self.assertEqual(settings.full['spiritual_stones'], 'vanilla')
+            self.assertNotIn('spiritual_stones', settings.to_dict()['full'])
+            self.assertEqual(settings_identity(settings), BEFORE_SPIRITUAL_STONES)
+
+    def test_new_settings_require_all_and_store_it(self):
         settings = full_settings()
         self.assertEqual(settings.full['spiritual_stones'], 'all')
-        self.assertNotIn('spiritual_stones', settings.to_dict()['full'])
-        self.assertEqual(settings_identity(settings), BEFORE_SPIRITUAL_STONES)
-        stored = settings.to_dict()                 # what such a seed stored: no ``spiritual_stones``
-        restored = Settings.from_dict(json.loads(json.dumps(stored)))
+        self.assertEqual(settings.to_dict()['full']['spiritual_stones'], 'all')
+        self.assertNotEqual(settings_identity(settings), BEFORE_SPIRITUAL_STONES)
+        restored = Settings.from_dict(json.loads(json.dumps(settings.to_dict())))
         self.assertEqual(restored.full['spiritual_stones'], 'all')
-        self.assertEqual(settings_identity(restored), BEFORE_SPIRITUAL_STONES)
-
-    def test_vanilla_stones_are_stored_and_make_another_seed(self):
-        vanilla = full_settings(spiritual_stones='vanilla')
-        self.assertEqual(vanilla.to_dict()['full']['spiritual_stones'], 'vanilla')
-        self.assertNotEqual(settings_identity(vanilla), BEFORE_SPIRITUAL_STONES)
-        restored = Settings.from_dict(json.loads(json.dumps(vanilla.to_dict())))
-        self.assertEqual(restored.full['spiritual_stones'], 'vanilla')
-        self.assertEqual(settings_identity(restored), settings_identity(vanilla))
+        self.assertEqual(settings_identity(restored), settings_identity(settings))
         with self.assertRaises(ValueError):
             full_settings(spiritual_stones='emerald')
 
