@@ -1,6 +1,6 @@
 # Live test plan
 
-Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.7.0 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 to 4, the checks' ids and places), show in the world's places, words and camera projection, the String64 and pause reads, what the pause hides, the ticks by hand and their file (read back, damaged, another seed's), the state, a
+Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.7.1 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 to 4, the checks' ids and places), show in the world's places, words and camera projection, the String64 and pause reads, what the pause hides, the ticks by hand and their file (read back, damaged, another seed's), the state, a
 region's list of checks, the game-data reader over a fake GameData, the controls (repeat, what the game doesn't see), the browsing, the
 icons file's index, the postcard's and the console's settings and files, the console's lines and fading, its mailbox (half-written
 writes, a full ring, the status line) and where the console goes next to every postcard. OotrR's `tests/test_console_bridge.py` covers
