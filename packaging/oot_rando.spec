@@ -16,6 +16,8 @@ datas = [
     # Title screen badge image (patching/title_badge.py).
     (str(PKG / 'patching' / 'title_badge.rgba.zlib'), 'oot_rando/patching'),
     (str(PKG / 'patching' / 'source_textures'), 'oot_rando/patching/source_textures'),
+    # Community display names of the checks (game/check_name_overrides.py).
+    (str(PKG / 'game' / 'check_name_overrides.json'), 'oot_rando/game'),
     # Icon extraction: in process (Pillow and texture2ddecoder are bundled), or by path with
     # HookshotBuilder's Python.
     (str(PKG / 'tracker' / 'icon_extract.py'), 'oot_rando/tracker'),
