@@ -70,6 +70,8 @@ the seed's rules, without crediting rewards of locations not picked up yet.
 
 **Unknown** means the reading or the matching is not reliable enough. These rows
 stay visible; a manual fallback mark is possible without revealing the reward.
+**not tracked** marks a row the save never records (an NPC gift or a shop refill
+left in place, for example): only a manual mark completes it.
 Old seeds still open, but must be regenerated to get the newer metadata. The
 tracker refuses a save that does not carry the new-game marker of the selected seed.
 
