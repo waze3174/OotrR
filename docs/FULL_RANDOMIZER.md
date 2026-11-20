@@ -261,12 +261,17 @@ Sword pedestal:
 
 | Value | Stones | Logic and patch |
 |---|---|---|
-| `all` (default, "Require all") | Kokiri Emerald, Goron Ruby, Zora Sapphire | the rules of the base world (`has_all_stones`); `story_fixes.STONE_SETS['all']` checks the three saved `IsGet.Item_Stone_*` flags |
-| `vanilla` ("Vanilla") | Goron Ruby, Zora Sapphire | `has_escape_stones` without the emerald, and `Met Zelda` for the ocarina item too; `STONE_SETS['vanilla']` checks the two |
+| `all` (default, "Require all") | Kokiri Emerald, Goron Ruby, Zora Sapphire | `has_all_stones` (the rules of the base world); `story_fixes.STONE_SETS['all']` checks the three saved `IsGet.Item_Stone_*` flags |
+| `vanilla` ("Vanilla") | Goron Ruby, Zora Sapphire | the Goron Ruby and the Zora Sapphire in the rules, and `Met Zelda` for the ocarina item too; `STONE_SETS['vanilla']` checks the two |
 
-The rules use the helper `has_escape_stones` (`logic/world/helpers.json`), which folds
-the option when the logic is compiled: there is one copy of `remake.json`, not two. The
-Mask of Truth (`has_all_stones`) is not affected.
+The logic files (`remake.json`, `helpers.json`) keep the rules of one value, the one the
+builds before the option used (`rando_options.UNRECORDED`); `rules.ESCAPE_RULES` holds both,
+and the other value replaces them in `Logic` when the rules compile. So the world
+fingerprint (`World.fingerprint`, a hash of those files that seeds and Archipelago
+patches keep) does not change with the option, and a seed or patch made before it loads
+and tracks as before. Seeds and patches that chose the other value store it in their
+settings, from which the tracker and the apworld rebuild the same logic. The Mask of
+Truth (`has_all_stones`) is not affected.
 
 Seed identity: the builds before the option always asked for the Goron Ruby and the Zora
 Sapphire, so settings that do not hold the option mean `vanilla`

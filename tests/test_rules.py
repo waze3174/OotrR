@@ -1,4 +1,5 @@
 """Rules the remake adds or that AP applies in Python (Rules.py), not in JSON."""
+import json
 import sys
 import unittest
 from collections import Counter
@@ -148,10 +149,14 @@ class LogicTests(unittest.TestCase):
     # The locations behind Zelda's escape (the pedestal's rule applies to the Master Sword).
     ESCAPE = ('HF Ocarina of Time Item', 'Song from Ocarina of Time', 'ToT Master Sword')
     RULE_NAMES = {'ToT Master Sword': 'Master Sword Pedestal'}
-    # What they asked for before the option (upstream's rules).
-    UPSTREAM_ESCAPE_RULES = {'HF Ocarina of Time Item': "is_child and has_all_stones",
-                             'Song from Ocarina of Time': "is_child and has_all_stones and 'Met Zelda'",
-                             'ToT Master Sword': "open_door_of_time or (has_all_stones and 'Met Zelda')"}
+    # What they ask for under each value: "all" is upstream's rules, "vanilla" the Goron Ruby and the Zora Sapphire.
+    ESCAPE_RULES = {
+        'all': {'HF Ocarina of Time Item': "is_child and has_all_stones",
+                'Song from Ocarina of Time': "is_child and has_all_stones and 'Met Zelda'",
+                'ToT Master Sword': "open_door_of_time or (has_all_stones and 'Met Zelda')"},
+        'vanilla': {'HF Ocarina of Time Item': "is_child and Goron_Ruby and Zora_Sapphire and 'Met Zelda'",
+                    'Song from Ocarina of Time': "is_child and Goron_Ruby and Zora_Sapphire and 'Met Zelda'",
+                    'ToT Master Sword': "open_door_of_time or (Goron_Ruby and Zora_Sapphire and 'Met Zelda')"}}
 
     def stones_logic(self, value=None, **settings):
         if value is not None:
@@ -180,11 +185,6 @@ class LogicTests(unittest.TestCase):
         for value, needed in stones.items():
             logic = self.stones_logic(value)
             held = dict.fromkeys(needed, 1)
-            for location in self.ESCAPE:
-                rule = self.data.remake['location_rules'][self.RULE_NAMES.get(location, location)]
-                self.assertNotIn('Clear', rule, location)
-                if location != 'HF Ocarina of Time Item' or value == 'vanilla':
-                    self.assertIn("'Met Zelda'", rule, location)
             with self.subTest(spiritual_stones=value):
                 self.assertEqual(self.escape_found(logic, dict(held, **{'Met Zelda': 1})), set(self.ESCAPE))
                 for missing in needed:
@@ -195,6 +195,22 @@ class LogicTests(unittest.TestCase):
         # The Song of Time alone (songs shuffled) does not open the door without Zelda.
         self.assertFalse(self.escape_found(self.stones_logic('vanilla'), {}))
 
+    def test_the_tracker_rebuilds_the_logic_from_the_stored_settings(self):
+        # tracking.json keeps the logic settings (full_randomizer ``tracking_logic``); the tracker builds the logic from them.
+        from oot_rando.randomizer.full_randomizer import ap_settings
+        held = {'Goron Ruby': 1, 'Zora Sapphire': 1, 'Met Zelda': 1}
+        for value in rando_options.BY_NAME['spiritual_stones'].allowed():
+            with self.subTest(spiritual_stones=value):
+                original = Logic(self.data, ap_settings(dict(rando_options.defaults(), spiritual_stones=value), True))
+                rebuilt = Logic(self.data, json.loads(json.dumps(original.settings)))
+                for counts in (held, dict(held, **{'Kokiri Emerald': 1})):
+                    self.assertEqual(self.escape_found(rebuilt, counts), self.escape_found(original, counts))
+        # Settings kept before the option do not hold it.
+        older = {name: v for name, v in self.stones_logic().settings.items() if name != 'spiritual_stones'}
+        carried = self.stones_logic(rando_options.UNRECORDED['spiritual_stones'])
+        for counts in (held, dict(held, **{'Kokiri Emerald': 1})):
+            self.assertEqual(self.escape_found(Logic(self.data, older), counts), self.escape_found(carried, counts))
+
     def test_vanilla_escape_needs_no_kokiri_emerald(self):
         # The native check (DoorOfTime_CheckStoneNum) reads the Fire and Water quests only.
         counts = {'Goron Ruby': 1, 'Zora Sapphire': 1, 'Met Zelda': 1}
@@ -203,22 +219,22 @@ class LogicTests(unittest.TestCase):
         everything = dict(counts, **{'Kokiri Emerald': 1})
         self.assertEqual(self.escape_found(self.stones_logic('all'), everything), set(self.ESCAPE))
 
-    def test_require_all_keeps_the_upstream_rules(self):
-        # Under the default the escape rules answer exactly as the rules before the option did.
-        logic = self.stones_logic('all')
+    def test_each_value_answers_with_its_rules(self):
+        # "Require all" answers as the rules before the option did; both values do whatever the logic files carry.
         items = ('Kokiri Emerald', 'Goron Ruby', 'Zora Sapphire', 'Met Zelda')
-        for door_open in (False, True):
-            upstream = Logic(self.data, {'open_forest': 'closed_deku', 'open_door_of_time': door_open})
-            current = self.stones_logic('all', open_door_of_time=door_open)
-            for location, text in self.UPSTREAM_ESCAPE_RULES.items():
-                expected = upstream.compile(text)
-                actual = dict(current.location_rules)[location][0][1]
-                for mask in range(1 << len(items)):
-                    counts = {item: 1 for bit, item in enumerate(items) if mask >> bit & 1}
-                    for age in ('child', 'adult'):
-                        state = current.new_state(Counter(counts))
-                        self.assertEqual(bool(actual(state, state.counts, age)),
-                                         bool(expected(state, state.counts, age)), (location, counts, age, door_open))
+        for value, rules in self.ESCAPE_RULES.items():
+            for door_open in (False, True):
+                current = self.stones_logic(value, open_door_of_time=door_open)
+                for location, text in rules.items():
+                    expected = current.compile(text)
+                    actual = dict(current.location_rules)[location][0][1]
+                    for mask in range(1 << len(items)):
+                        counts = {item: 1 for bit, item in enumerate(items) if mask >> bit & 1}
+                        for age in ('child', 'adult'):
+                            state = current.new_state(Counter(counts))
+                            self.assertEqual(bool(actual(state, state.counts, age)),
+                                             bool(expected(state, state.counts, age)),
+                                             (value, location, counts, age, door_open))
 
     def test_remake_events_compiled(self):
         events = {e for r in self.logic.regions.values() for e, _ in r['events']}
