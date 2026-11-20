@@ -240,7 +240,9 @@ class WithGame(unittest.TestCase):
             before, after = dict(sarc(raw)), dict(sarc(patched))
             self.assertEqual({k for k in before if before[k] != after[k]}, {cuccos.MESSAGE_FILE})
             old, new = msbt.load(before[cuccos.MESSAGE_FILE]), msbt.load(after[cuccos.MESSAGE_FILE])
-            self.assertEqual({label for label in old.labels if old.get(label) != new.get(label)}, set(cuccos.LINES))
+            # Portuguese's reward line (Talk_40) says "Todas" (all): no number to replace.
+            expected = set(cuccos.LINES) - ({'Talk_40'} if path.split('/')[1].startswith('USpt') else set())
+            self.assertEqual({label for label in old.labels if old.get(label) != new.get(label)}, expected)
         # Every request and reward line; Polish names the count twice in two requests,
         # Portuguese says "Todas" (all) in the reward line.
         self.assertEqual(replaced, Counter({lang: 4 for lang in (
