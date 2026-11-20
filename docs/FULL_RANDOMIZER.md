@@ -142,17 +142,28 @@ The source itself keeps its map entry, but for its drop: no `Presence` and no va
 copy. The game remembers a broken pot, rock, crate, bush or beehive by its hash (a
 `Bool64bitKey`) until the scene changes; a copy under another hash, or a source under a
 `Presence` condition, came back while the area stayed loaded. Each pickup runs its own
-clone of the `DropItem` AI: when it spawns, it reads its check flag and deletes itself
-once the check is collected. A collected source therefore drops nothing afterwards
-(not its vanilla rupee or heart).
+clone of the `DropItem` AI: when it spawns, it reads its check flag, and once the check
+is collected it hands over to the source's vanilla drop. The pickup carries that drop
+as its own `DropRef`: the source pack's drop component (its lottery: hearts, magic,
+ammo, nuts and bombs from pots, grass and crates, rupees from rocks and beehives) or,
+for a source whose map entry names its drop (`Drop__DropActor`), a table of that one
+rupee or heart. The pickup reserves that drop and requests its death, as the Poe's
+lantern does when it leaves its spirit (`Weapon_PoeCantera.root`:
+`OneShotDropReserveDropItemCreate`, then `OneShotDeathRequestDeath`, reason 10). A
+source whose drop is unknown (its pack has none, or its map entry names a table)
+drops nothing once collected. Not validated in game.
 
 When the check is collected depends on the reward. A key reward plays its get event
 on every pickup, and that event's graph sets the check flag once the item is in the
 pouch. A minor reward (rupees, ammunition, recovery hearts, magic jars) keeps the
 native pick-up, without Link stopping: the game plays its get event only the first
-time an item of that kind is ever got, so that graph cannot record the check. Its drop
-AI sets the check flag as soon as the pickup spawns, right after the "already
-collected" test. A minor drop that is never picked up still counts as collected.
+time an item of that kind is ever got, so that graph cannot record the check. No
+graph sees the short pick-up: `DropItem.root` holds no pick-up node, and no node of
+the game's AI reads a pick-up. Its drop AI therefore sets the check flag when the
+pickup spawns, right after the "already collected" test, if the pouch can take the
+reward then (`QueryPouchMgrIsEnablePushToPouch`): a full wallet keeps a rupee check
+for later. A minor drop that is not picked up while the pouch has room still counts
+as collected.
 
 ## Dungeon-specific keys (`key_adapter.py`)
 
