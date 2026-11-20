@@ -705,17 +705,18 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
                 flag: False for record in mailbox_items for flag in (record['recv'], record['got'])})
             skips['ap_mailbox'] = {'items': mailbox_items, 'row': mailbox_row}
         if full is not None:
-            # Chests save no flag of their own: each shuffled chest runs its own copy of
-            # its opening event, which sets a saved Bool first (tracking, Archipelago).
-            # Last of the event patches: the copied rows inherit every completed list.
+            # Chests save no flag of their own: each chest, shuffled or left in place, runs
+            # its own copy of its opening event, which sets a saved Bool first (tracking,
+            # Archipelago). Last of the event patches: the copied rows inherit every
+            # completed list.
             report('Opening flags of the chests…')
             from oot_rando.patching import chest_flags
             current_raw = lambda path: extra_raw[path] if path in extra_raw else decompress(read(path), d)
             map_root = lambda path: Byml(raw_maps[path] if path in raw_maps else decompress(read(path), d)).root
             settings_raw = current_raw(chest_flags.EVENT_SETTINGS)
             settings_rows = {row['__RowId']: row for row in Byml(settings_raw).root}
-            records, skipped = chest_flags.plan_records(full['placements'], map_root, settings_identity(settings),
-                                                        settings_rows)
+            chests = full['placements'] + chest_flags.vanilla_placements(full['matches'], full['placements'])
+            records, skipped = chest_flags.plan_records(chests, map_root, settings_identity(settings), settings_rows)
             for resource, edits in sorted(chest_flags.map_edits(records).items()):
                 raw_maps[resource] = patch_strings(raw_maps[resource] if resource in raw_maps
                                                    else decompress(read(resource), d), edits)
