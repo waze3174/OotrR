@@ -18,6 +18,7 @@ from oot_rando.randomizer.randomizer_services import (read_artifact, generate_in
 from oot_rando.randomizer.qol_install import install_qol
 from oot_rando.tracker.auto_tracker import TrackerSession, find_save_slots, newest_save
 from oot_rando.tracker import game_overlay
+from oot_rando.game.check_name_overrides import display_name
 from oot_rando.tracker.check_labels import check_labels
 from oot_rando.tracker import live_memory
 from oot_rando.randomizer import spoiler_report
@@ -682,7 +683,7 @@ class Application:
             row = ttk.Frame(self.home_list)
             row.pack(fill='x', pady=7)
             ttk.Label(row, image=self.images['dot_ok']).pack(side='left', padx=(0, 10))
-            name = check['name'] if check.get('category') != 'world_chests' else 'Chest'
+            name = display_name(check['name']) if check.get('category') != 'world_chests' else 'Chest'
             ttk.Label(row, text=f'{check.get("region") or "Other"} — {name}').pack(side='left')
             ttk.Label(row, text=TRACKER_KINDS.get(check.get('category', ''), ''), style='Small.TLabel').pack(side='right')
 
