@@ -19,6 +19,40 @@ class ShopRuleTests(unittest.TestCase):
         self.assertIsNone(shop_rule('Buy Deku Shield'))
 
 
+class ClosedForestShortcutTests(unittest.TestCase):
+    """A closed Kokiri Forest only blocks its bridge: the Lost Woods shortcuts stay open."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.logic = Logic(World(), {'open_forest': 'closed'})
+
+    def child_regions(self, counts):
+        state, _, _ = self.logic.sweep({}, self.logic.new_state(Counter(counts)))
+        return state.reached['child']
+
+    def test_nothing_leaves_the_forest(self):
+        reached = self.child_regions({})
+        self.assertNotIn('Zora River', reached)
+        self.assertNotIn('Goron City', reached)
+        self.assertNotIn('Hyrule Field', reached)
+
+    def test_scale_reaches_zora_river_and_hyrule_field(self):
+        reached = self.child_regions({'Progressive Scale': 1})
+        self.assertIn('Zora River', reached)
+        self.assertIn('Hyrule Field', reached)
+
+    def test_bombs_reach_goron_city_and_kakariko_only_by_the_owl(self):
+        reached = self.child_regions({'Bomb Bag': 1})
+        self.assertIn('Goron City', reached)
+        self.assertIn('Kak Behind Gate', reached)
+        # The gate stays closed for child Link: Kakariko only through the summit owl.
+        gate = dict(self.logic.regions['Kak Behind Gate']['exits'])['Kakariko Village']
+        state = self.logic.new_state(Counter({'Bomb Bag': 1}))
+        self.assertFalse(gate(state, state.counts, 'child'))
+        self.assertIn('DMT Owl Flight', reached)
+        self.assertIn('Kakariko Village', reached)
+
+
 class LogicTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -201,6 +235,14 @@ class LogicTests(unittest.TestCase):
         self.assertTrue(sheik(Day, {'Forest Medallion': 1}, 'adult'))
         self.assertFalse(sheik(Day, {'Forest Medallion': 1}, 'child'))
         self.assertFalse(sheik(Day, {'Forest Temple Clear': 1}, 'adult'))
+        kakariko = rules['Sheik in Kakariko'][0][1]
+        three = {'Forest Medallion': 1, 'Fire Medallion': 1, 'Water Medallion': 1}
+        self.assertTrue(kakariko(Day, three, 'adult'))
+        self.assertFalse(kakariko(Day, three, 'child'))
+        for missing in three:
+            self.assertFalse(kakariko(Day, {m: 1 for m in three if m != missing}, 'adult'))
+        self.assertFalse(kakariko(Day, {'Forest Temple Clear': 1, 'Fire Temple Clear': 1,
+                                        'Water Temple Clear': 1}, 'adult'))
         lacs = rules['ToT Light Arrows Cutscene'][0][1]
         medals = {'Shadow Medallion': 1, 'Spirit Medallion': 1}
         self.assertTrue(lacs(Day, medals, 'adult'))

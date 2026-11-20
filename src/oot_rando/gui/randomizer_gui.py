@@ -13,10 +13,10 @@ from tkinter import ttk, filedialog, messagebox, simpledialog
 
 from oot_rando.randomizer.randomizer_core import Settings, CHECKS, GENERATOR_VERSION, generate
 from oot_rando.randomizer.randomizer_services import (read_artifact, generate_in_mods, qol_seed_warning,
-                                                      validate_mod_directory, has_ingame_tracker,
-                                                      update_ingame_tracker)
+                                                      regeneration_settings, validate_mod_directory,
+                                                      has_ingame_tracker, update_ingame_tracker)
 from oot_rando.randomizer.qol_install import install_qol
-from oot_rando.tracker.auto_tracker import TrackerSession, newest_save
+from oot_rando.tracker.auto_tracker import TrackerSession, find_save_slots, newest_save
 from oot_rando.tracker import game_overlay
 from oot_rando.tracker.check_labels import check_labels
 from oot_rando.tracker import live_memory
@@ -39,7 +39,7 @@ GAME_OPTIONS = [('randomize_chests', 'Randomize the four Kokiri chests (child an
                 ('avoid_vanilla', 'Avoid vanilla rewards when the pool allows it'),
                 ('open_forest', 'Open the way from Kokiri Forest to Hyrule Field'),
                 ('skulltulas_always_present', 'Night-only gold skulltulas present day and night')]
-SKIP_OPTIONS = [('skip_locked_cutscenes', 'Skippable cutscenes: intro, title screen demo, end credits and area presentations'),
+SKIP_OPTIONS = [('skip_locked_cutscenes', 'Skippable cutscenes: intro, title screen demo and end credits'),
                 ('skip_auto_dialogues', 'Automatic dialogues skippable with + (minigames, Navi: 12 sequences)'),
                 ('skip_chest_cutscenes', 'Chests (big and small) without cutscene: the lid opens and the item is obtained')]
 OPTIONS = GAME_OPTIONS + SKIP_OPTIONS
@@ -72,7 +72,7 @@ OPTION_COPY = {
     'shuffle_npc_gifts': ('Character gifts and minigames', 'Shuffles the supported rewards of characters and minigames.'),
     'shuffle_boss_rewards': ('Boss and dungeon rewards', 'Shuffles spiritual stones, medallions and heart containers. The game scenes are kept.'),
     'shuffle_great_fairies': ('Great fairy rewards', 'Shuffles spells, magic and defense upgrades.'),
-    'shuffle_quest_rewards': ('Main quest rewards', 'Includes the ocarinas, Zelda\'s Letter (with a shuffled child trade quest), the Light Arrows, the Biggoron Sword and Ruto\'s Letter. Songs have their own shuffle setting.'),
+    'shuffle_quest_rewards': ('Main quest rewards', 'Includes the ocarinas, Zelda\'s Letter (with a shuffled child trade quest), the Light Arrows, the Biggoron Sword and Ruto\'s Letter. Songs follow the Songs setting.'),
     'shuffle_pots': ('Pots', 'The first reward is shuffled. Once picked up, the pot goes back to its vanilla loot.'),
     'shuffle_crates': ('Crates', 'The first reward is shuffled. Later pickups use the vanilla loot.'),
     'shuffle_beehives': ('Beehives', 'The first reward is shuffled. Later pickups use the vanilla loot.'),
@@ -270,6 +270,8 @@ class Application:
         self.configure_theme()
         self.events, self.busy = queue.Queue(), False
         self.artifact, self.tracker, self.overlay, self.hud = None, None, None, None
+        self.regen_settings = None   # settings of an installed seed made by an older generator
+        self.artifact_manifest = None   # manifest of self.artifact (set by use_artifact)
         self.hud_status = tk.StringVar(value='')
         self.zone_open, self.tracker_scroll, self.tracker_trees = {}, {}, {}
         self.current_checks = []
@@ -329,7 +331,7 @@ class Application:
         self.connection_status = tk.StringVar(value='Tracker not connected')
         self.tracker_summary = tk.StringVar(value='Open a seed to show its locations.')
         self.seed_chip = tk.StringVar(value='No seed open')
-        self.sidebar = theme.Sidebar(root, self.fonts, self.show_page, footer=f'Version {GENERATOR_VERSION}')
+        self.sidebar = theme.Sidebar(root, self.fonts, self.show_page, footer=f'Version {APP_VERSION}')
         self.sidebar.pack(side='left', fill='y')
         outer = ttk.Frame(root, padding=(34, 26, 34, 18), style='Page.TFrame')
         outer.pack(side='left', fill='both', expand=True)
@@ -571,6 +573,7 @@ class Application:
         self.home_primary.pack(side='right')
         self.home_secondary = ttk.Button(row, style='Hero.TButton')
         self.home_secondary.pack(side='right', padx=(0, 10))
+        self.home_regen = ttk.Button(row, text='Regenerate', style='Hero.TButton', command=self.regenerate)
         links = ttk.Frame(parent, style='Page.TFrame')
         links.pack(fill='x', pady=(0, 12))
         for text, command in [('Open a seed…', self.open_artifact), ('Open the folder', self.open_folder),
@@ -630,8 +633,14 @@ class Application:
             self.home_primary.configure(text='Continue', command=lambda: self.show_page('tracker'))
             self.home_secondary.configure(text='New seed', command=lambda: self.show_page('newseed'))
         else:
+            self.regen_settings = None
             self.home_primary.configure(text='Create a seed', command=lambda: self.show_page('newseed'))
             self.home_secondary.configure(text='Open a seed…', command=self.open_artifact)
+        if self.regen_settings is not None:
+            if not self.home_regen.winfo_manager():
+                self.home_regen.pack(side='right', padx=(0, 10), after=self.home_secondary)
+        else:
+            self.home_regen.pack_forget()
         setup = lambda: self.show_page('setup')
         if self.nup.get() and Path(self.nup.get()).is_file():
             self.set_tile('game', 'ok', 'Found')
@@ -1506,8 +1515,34 @@ class Application:
         except Exception as error:
             self.error(error)
 
+    def regenerate(self):
+        """Generate the installed seed again with this version: same name, same settings."""
+        try:
+            settings = self.regen_settings
+            if settings is None or self.artifact is None:
+                raise ValueError('This seed is already up to date.')
+            nup = Path(self.nup.get())
+            if not nup.is_file():
+                raise ValueError('Select the local NUP file.')
+            mods = validate_mod_directory(self.artifact.parent)
+            if not messagebox.askyesno(
+                    'Regenerate the seed',
+                    f'Seed "{settings.seed}" was made by an older version of the randomizer. Generate it '
+                    f'again with version {GENERATOR_VERSION}, with the same name and settings?\n\n'
+                    'The current copy is moved to the archive (never deleted). The new version may '
+                    'place items differently: a new game may be needed.'):
+                return
+
+            def job(progress):
+                installed = generate_in_mods(nup, mods, settings, progress, archive=ARCHIVE, generate=generate)
+                return installed, installed
+            self.run_job(job, self.generated_and_installed)
+        except Exception as error:
+            self.error(error)
+
     def generated_and_installed(self, result):
         directory, installed = result
+        previous = self.artifact_manifest   # seed replaced by this one (same folder if regenerated)
         self.use_artifact(directory)
         self.show_page('tracker')
         self.status.set('Seed generated and installed: ' + str(installed))
@@ -1515,10 +1550,59 @@ class Application:
         messagebox.showinfo('Seed ready', 'Seed installed in:\n' + str(installed)
                             + '\n\nStart a new game to enable automatic tracking and first collections.'
                             + ('\n\n' + warning if warning else ''))
+        self.offer_save_migration(self.artifact_manifest, previous)
+
+    def offer_save_migration(self, manifest, previous=None):
+        """Offer to give the saves of this seed the start values they never received.
+
+        A fix written by the new-game opening only reaches games started after it. Saves
+        of this seed (or of the one it regenerates) are listed; nothing is written unless
+        the player agrees, and each save is backed up first (tracker/save_patch.py)."""
+        from oot_rando.tracker import save_patch
+        try:
+            paths = find_save_slots(self.hookshot_root(), TITLE, self.mods.get() or None)
+            candidates = save_patch.migration_candidates(paths, manifest, previous)
+        except Exception as error:   # never block the installation on a save scan
+            self.status.set('Saves not checked: ' + str(error))
+            return
+        if not candidates:
+            return
+        names = sorted({name for _, changed in candidates for name in changed})
+        listing = '\n'.join('• ' + str(path) for path, _ in candidates[:6])
+        if len(candidates) > 6:
+            listing += f'\n• … and {len(candidates) - 6} more'
+        if not messagebox.askyesno(
+                'Update the saves of this seed',
+                f'{len(candidates)} save(s) of this seed were started before some fixes of this version and '
+                f'miss {len(names)} start value(s) (' + ', '.join(names[:4]) + (', …' if len(names) > 4 else '')
+                + ').\n\n' + listing + '\n\nUpdate them now? Close the game first. Each save is backed up '
+                'next to it (progress.sav' + save_patch.BACKUP_SUFFIX + '<date>) and only flags it already '
+                'holds are changed.'):
+            return
+        markers = save_patch.migration_markers(manifest, previous)
+        done, failed = [], []
+        for path, _ in candidates:
+            try:
+                done.append(save_patch.patch_save(path, manifest.get('start_values') or {}, markers))
+            except save_patch.GameRunning as error:
+                failed.append(str(error))
+                break
+            except Exception as error:
+                failed.append(f'{path}: {error}')
+        text = f'{len(done)} save(s) updated.'
+        backups = [report['backup'] for report in done if report['backup']]
+        if backups:
+            text += '\nBackups:\n' + '\n'.join(backups)
+        if failed:
+            text += '\n\nNot updated:\n' + '\n'.join(failed)
+            messagebox.showwarning('Saves of this seed', text)
+        else:
+            messagebox.showinfo('Saves of this seed', text)
+        self.status.set(text.splitlines()[0])
 
     def use_artifact(self, directory):
         manifest, _ = read_artifact(directory)
-        self.artifact = Path(directory)
+        self.artifact, self.artifact_manifest = Path(directory), manifest
         self.result.set('Seed: ' + manifest['settings']['seed'] + '\nIdentity: ' + manifest['seed_id'][:16]
                         + f' • {len(manifest["files"])} resources checked\n' + str(directory))
         complete = manifest.get('full_randomizer')
@@ -1532,6 +1616,7 @@ class Application:
             self.result.set(self.result.get() + f'\n{coverage["changed_groups"]} ordinary chests changed, '
                             f'{coverage["changed_instances"]} physical variants; vanilla progression.')
         self.apply_settings(Settings.from_dict(manifest['settings']))
+        self.regen_settings = regeneration_settings(manifest)
         if manifest.get('tracking', {}).get('new_save_required'):
             self.result.set(self.result.get() + '\nA new game is needed for automatic tracking.')
         self.seed_name = (manifest['settings']['seed'] or manifest['seed_id'][:12])[:28]
@@ -1994,7 +2079,7 @@ class Application:
             if not self.hud:
                 hookshot = self.hookshot_root()
                 romfs = hookshot / 'romfs' if hookshot else None
-                icons = game_overlay.IconCache(STATE / 'icons', romfs)
+                icons = game_overlay.IconCache(STATE / 'icons', romfs, self.nup.get() or None)
                 icons.ensure()
                 self.hud = game_overlay.GameHud(self.root, icons=icons)
                 self.update_hud()

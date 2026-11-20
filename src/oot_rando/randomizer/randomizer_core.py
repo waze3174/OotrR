@@ -19,7 +19,7 @@ from oot_rando.formats.inspect_resources import Byml, decompress, dictionaries, 
 from oot_rando.patching.randomize_kokiri import BUILD, TITLE, MAP, RESTBL, CHESTS, POOL, check_supported_game, patch_map
 from oot_rando.patching.qol_patches import (STATIC, STATIC_SOURCE_SHA256, DYNAMIC_SOURCE_SHA256, PHYSICS, EVENT_SETTINGS,
                          patch_forest, patch_baked_wall, sha256, cutscene_files, patch_dialogues,
-                         area_presentation_files, quick_chest, CHEST_FLOW,
+                         quick_chest, CHEST_FLOW,
                          quick_small_chest, SMALL_CHEST_FLOW,
                          KOKIRI_SHOP_MAPS, KOKIRI_SHOP_PACKS, open_kokiri_shop,
                          release_kokiri_shop_goods, BOMB_LIFT_PACKS, free_bomb_lift,
@@ -35,10 +35,12 @@ from oot_rando.formats.byml_writer import lift_actors, patch_strings
 from oot_rando.logic import rando_options
 from oot_rando.tracker import ingame_bundle, ingame_icons
 
-GENERATOR_VERSION = '0.11.0'
+GENERATOR_VERSION = '0.12.0'
 ADAPTER_VERSION = 'ap-glitchless-v5'   # v5: progressive tokens (every copy gives the next level)
 ADULT_MAP = MAP.replace('_Child_', '_Adult_')
-STARTING_ITEMS = ('Item_BulletBag_Small', 'Item_Quiver_Small')
+# The amiibo menu: given by Kaepora's first field arrival, now never played
+# (patching/owl_advice.py, FIELD_ARRIVAL_POUCH).
+STARTING_ITEMS = ('Item_BulletBag_Small', 'Item_Quiver_Small', 'Pouch_Amiibo')
 
 
 def ap_records(settings):
@@ -89,8 +91,8 @@ class Settings:
     excluded_checks: list[str] = field(default_factory=list)
     avoid_vanilla: bool = True
     open_forest: bool = True
-    # Omitted from ``to_dict`` while False. ``skip_locked_cutscenes`` covers the intro,
-    # every other locked cutscene and the area presentations.
+    # Omitted from ``to_dict`` while False. ``skip_locked_cutscenes`` covers the intro
+    # and every other locked cutscene (area presentations never play: always on).
     skip_locked_cutscenes: bool = False
     skip_auto_dialogues: bool = False
     # Big chests: lid animation, Link holds the item up, no chest performance.
@@ -478,6 +480,17 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             story = {}
             for path, key, fix in story_fixes.FLOW_FIXES:
                 extra_raw[path], story[key] = fix(extra_raw.get(path) or decompress(read(path), d))
+            # Kaepora's first field arrival never plays (its effects are set at the start):
+            # its quest step follows the Deku Tree escape instead (patching/owl_advice.py).
+            from oot_rando.patching import owl_advice
+            from oot_rando.patching.quest_guard import CHALLENGES, challenge_steps
+            extra_raw[owl_advice.ESCAPE_FLOW], story['owl_field_step'] = owl_advice.field_step_after_escape(
+                extra_raw.get(owl_advice.ESCAPE_FLOW) or decompress(read(owl_advice.ESCAPE_FLOW), d),
+                challenge_steps(decompress(read(CHALLENGES), d)))
+            # Full bottles (Ruto's Letter...) on a shelf need no empty bottle (patching/shop_bottles.py).
+            from oot_rando.patching.shop_bottles import DISPLAY_SHOP_FLOW, patch_display_shop
+            extra_raw[DISPLAY_SHOP_FLOW], story['shop_full_bottles'] = patch_display_shop(
+                extra_raw.get(DISPLAY_SHOP_FLOW) or decompress(read(DISPLAY_SHOP_FLOW), d))
             from oot_rando.patching.quest_guard import CHALLENGES as CHALLENGE_TABLE
             from oot_rando.patching import child_castle_skip
             if child_castle_skip.enabled(settings.full):
@@ -514,6 +527,20 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             raw_maps[story_fixes.ZORA_RIVER_MAP] = patch_strings(river, wall_edits)
             story['zora_river_wall'] = {'map': story_fixes.ZORA_RIVER_MAP, 'actors': wall_actors,
                                         'presence': story_fixes.ZORA_RIVER_WALL_PRESENCE}
+            # Same walls in the child map, adult-only there.
+            child_river = (raw_maps.get(story_fixes.ZORA_RIVER_CHILD_MAP)
+                           or decompress(read(story_fixes.ZORA_RIVER_CHILD_MAP), d))
+            wall_edits, wall_actors = story_fixes.zora_river_child_wall_edits(Byml(child_river).root)
+            raw_maps[story_fixes.ZORA_RIVER_CHILD_MAP] = patch_strings(child_river, wall_edits)
+            story['zora_river_child_wall'] = {'map': story_fixes.ZORA_RIVER_CHILD_MAP, 'actors': wall_actors,
+                                              'presence': story_fixes.ZORA_RIVER_WALL_PRESENCE,
+                                              'negation': True}
+            # Adult Link can longshot onto the Lake Hylia island tree before the Water Temple.
+            lake = raw_maps.get(story_fixes.LAKE_TREE_MAP) or decompress(read(story_fixes.LAKE_TREE_MAP), d)
+            tree_edits, tree_actor = story_fixes.lake_tree_wall_edits(Byml(lake).root)
+            raw_maps[story_fixes.LAKE_TREE_MAP] = patch_strings(lake, tree_edits)
+            story['lake_tree_wall'] = {'map': story_fixes.LAKE_TREE_MAP, 'actor': tree_actor,
+                                       'presence': story_fixes.LAKE_TREE_WALL_PRESENCE_ENTRY['FlagName']}
             # Adult Link can put the Master Sword back before the Forest Temple (raw file).
             extra_raw[story_fixes.PEDESTAL_MODULE], story['pedestal'] = story_fixes.pedestal_after_first_adult_arrival(
                 extra_raw.get(story_fixes.PEDESTAL_MODULE) or read(story_fixes.PEDESTAL_MODULE))
@@ -521,11 +548,14 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
                 extra_raw.get(story_fixes.LIGHT_ARROWS_MODULE) or read(story_fixes.LIGHT_ARROWS_MODULE))
             extra_raw[story_fixes.PRELUDE_MODULE], story['prelude_medallion'] = story_fixes.prelude_on_forest_medallion(
                 extra_raw.get(story_fixes.PRELUDE_MODULE) or read(story_fixes.PRELUDE_MODULE))
+            # Sheik in Kakariko: the burning scene on the three medallions, not the three sages.
+            extra_raw[GAMEDATA], story['kakariko_burning_medallions'] = story_fixes.kakariko_burning_on_medallions(
+                extra_raw.get(GAMEDATA) or decompress(read(GAMEDATA), d))
             # Zelda's escape on the Goron Ruby and the Zora Sapphire, checked at every item get.
             extra_raw[ACTION_GUIDE_FLOW], story['zelda_escape_item_get'] = story_fixes.zelda_escape_on_item_get(
                 extra_raw[ACTION_GUIDE_FLOW])
-            # The clock runs from the start (Impa's send-off and Kaepora's arrival flags set).
-            story['clock'] = list(story_fixes.CLOCK_FLAGS)
+            # The clock runs before Zelda (Impa's send-off flag set at the start).
+            story['clock'] = story_fixes.CLOCK_FLAG
             # Zones open from the start, kept open (patching/world_openings.py).
             from oot_rando.patching.world_openings import OPENINGS, apply_openings
             options = full.get('options') or {}
@@ -568,6 +598,7 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             # just before the ending cutscene (read live by the client: no save follows).
             extra_raw[GOAL_FLOW], goal_markers = add_collection_markers(
                 extra_raw.get(GOAL_FLOW) or decompress(read(GOAL_FLOW), d), {GOAL_EVENT: goal_name})
+        start_values = {}   # GameData written at the end of the opening (manifest: save migration)
         if settings.full is not None:
             # Seed bag and quiver (level 1) from the start: the slingshot and the
             # bow can come from any source (a shop slot never grants the bag).
@@ -577,10 +608,12 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             # Maps/compasses "start with", keys "removed": dungeon data written at the start.
             from oot_rando.patching.event_patch import add_start_values
             from oot_rando.patching.key_adapter import start_dungeon_values, check_start_values
-            from oot_rando.patching import child_castle_skip
+            from oot_rando.patching import area_presentations, child_castle_skip
             castle_skip = child_castle_skip.enabled(settings.full)
-            start_values = dict(start_dungeon_values(settings.full), **story_fixes.story_start_values(),
-                                **(child_castle_skip.START_VALUES if castle_skip else {}))
+            start_values = dict(start_dungeon_values(settings.full), **story_fixes.story_start_values())
+            start_values.update(area_presentations.start_values())
+            if castle_skip:
+                start_values.update(child_castle_skip.START_VALUES)
             if start_values:
                 check_start_values(extra_raw[GAMEDATA], start_values)
                 extra_raw[opening] = add_start_values(extra_raw[opening], 'RandoCollected_Event3', start_values)
@@ -617,10 +650,15 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             if settings.full.get('big_poe_count', 10) != 10:
                 skips['big_poes'] = settings.full['big_poe_count']
         current_flow = lambda path: extra_raw[path] if path in extra_raw else decompress(read(path), d)
-        if settings.skip_locked_cutscenes:
-            report('Skippable area presentations…')
-            flows, skips['area_presentations'] = area_presentation_files(current_flow)
-            extra_raw.update(flows)
+        # Every seed: area presentations never play (patching/area_presentations.py):
+        # pre-marked at the start in full mode, else left on their first frame.
+        report('Area presentations skipped…')
+        from oot_rando.patching.area_presentations import presentation_files
+        flows, skips['area_presentations'] = presentation_files(current_flow, premarked=settings.full is not None)
+        extra_raw.update(flows)
+        if settings.full is not None:
+            from oot_rando.patching.area_presentations import start_values as presentation_start_values
+            skips['presentation_flags'] = presentation_start_values()
         if settings.skip_chest_cutscenes or (settings.full or {}).get('fast_chests'):
             report('Chests without cutscene…')
             extra_raw[CHEST_FLOW], skips['quick_chest'] = quick_chest(current_flow(CHEST_FLOW))
@@ -639,11 +677,11 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             flows, skips['cutscene_windows'] = cutscene_window_files(original_flow, flow_names, candidates)
             extra_raw.update(flows)
         skips.update(complete_event_info(extra_raw, nup, members, d, read))
-        if settings.skip_locked_cutscenes or settings.skip_auto_dialogues:
-            # In place on the vanilla table (same size); chest rows are added after.
-            report('Dialogues and area presentations skippable with + …')
-            extra_raw[EVENT_SETTINGS], skips['dialogues'] = patch_dialogues(
-                decompress(read(EVENT_SETTINGS), d), settings.skip_auto_dialogues, settings.skip_locked_cutscenes)
+        # In place on the vanilla table (same size); chest rows are added after. The
+        # area presentation rows always pause like the fountains (their skip windows).
+        report('Dialogues and area presentations skippable with + …')
+        extra_raw[EVENT_SETTINGS], skips['dialogues'] = patch_dialogues(
+            decompress(read(EVENT_SETTINGS), d), settings.skip_auto_dialogues, True)
         plain_raw = {}
         mailbox_items = ap_records(settings)
         if mailbox_items:
@@ -729,6 +767,9 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
                     'validation': 'Static checks done; this composed seed is still to be tested in game.'}
         if save_seed_id:
             manifest['save_seed_id'] = save_seed_id
+        if start_values:
+            # Values a game started before a fix never received (tracker/save_patch.py).
+            manifest['start_values'] = dict(sorted(start_values.items()))
         if full is not None:
             families = sorted({p['source'] for p in full['placements']})
             manifest['scope'] = ('Full glitchless randomizer: sources shuffled together ('

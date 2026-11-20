@@ -14,9 +14,72 @@ LAKE_FLOW = 'Event/EventFlow/Npc_Kaepora_LakeHylia.bfevfl.zs'
 DREAM_INTRO_FLOW = 'Event/EventFlow/Dm_HrlField_0080.bfevfl.zs'
 
 
+# --- Kaepora's first field arrival: the day/night cycle -----------------------------
+# Vanilla holds the clock until Kaepora's first talk in Hyrule Field (Discord 19/11,
+# "Day/Night Cycle"): the cycle starts once ``Goto_HyruleCastle_Kaepora_00`` has run.
+# That sequence (``HyruleField_Child_Prefab_de5f``: Link in its area while
+# ``Dm_HrlField_0010`` is not played, the area deleted once ``Goto_HyruleCastle`` is
+# past ``Step01``) sets ``HyruleField_ArriveEntrance`` (read by no game file: native),
+# plays ``Dm_HrlField_0000/0005/0010``, then gives the amiibo menu, requests ``Step02``,
+# opens the challenge menu and the Hyrule Field music. In a seed it broke three ways:
+# Kokiri left by Goron City or Zora's River (no clock until the bridge), the owl scenes
+# skipped (``Dm_HrlField_0000`` alone: a black screen), and the child castle skipped
+# (the quest past ``Step01``: the area deleted, no clock ever).
+#
+# Its saved effects are now written at the end of the new-game opening, so the
+# trigger never fires and the clock runs from the start; the amiibo menu is given with
+# the starting items; ``Step02`` is requested right after the Deku Tree escape's own
+# ``Step01`` (skipped once the quest is past ``Step01``). Not validated in game.
+FIELD_ARRIVAL_EVENTS = ('Dm_HrlField_0000', 'Dm_HrlField_0005', 'Dm_HrlField_0010')
+FIELD_ARRIVAL_VALUES = {
+    'HyruleField_ArriveEntrance': True,
+    'UI_IsFinishChallengeMenuOpenEvent': True,
+    'NaviHint_Disp_FieldHint_01': False,
+}
+FIELD_ARRIVAL_POUCH = ('Pouch_Amiibo',)
+ESCAPE_FLOW = 'Event/EventFlow/Dm_SY_BancChange_EscapeDungeon.bfevfl.zs'
+ESCAPE_STEP01 = 'Event4'
+FIELD_STEP = 'RandoOwlFieldStep02'
+FIELD_STEP_GUARD = 'RandoOwlFieldStep02Guard_'
+FIELD_STEP_SKIP = 'Goto_HyruleCastle_IsAfter_Step01_Exp'
+
+
 def start_values():
-    """Only tutorial flags with no lost inventory or story effects."""
-    return {'HavePlayedEvent.' + event: True for event in ADVICE_EVENTS}
+    """Tutorial flags with no lost inventory or story effects, and the first field arrival."""
+    values = {'HavePlayedEvent.' + event: True for event in ADVICE_EVENTS + FIELD_ARRIVAL_EVENTS}
+    values.update(FIELD_ARRIVAL_VALUES)
+    return values
+
+
+def field_step_after_escape(raw, steps):
+    """Deku Tree escape flow: Kaepora's ``Step02`` right after its ``Step01`` request.
+
+    ``steps``: the challenge table (:func:`oot_rando.patching.quest_guard.challenge_steps`).
+    Returns (bytes, report)."""
+    from oot_rando.patching import quest_guard
+    from oot_rando.patching.story_fixes import _Chart, _params
+    flow = _Chart(raw)
+    flow.fresh(FIELD_STEP)
+    escape = flow.event(ESCAPE_STEP01, 'ActionEvent')
+    params = _params(escape)
+    if (escape.data.actor_action.v.v != quest_guard.STEP_ACTION
+            or params.get('ChallengeName') != 'Goto_HyruleCastle' or params.get('StepName') != 'Step01'
+            or escape.data.nxt.v is None):
+        raise ValueError('Unexpected Deku Tree escape request.')
+    if any(name == 'Step02' for _, name in quest_guard.step_requests(raw, 'Goto_HyruleCastle')):
+        raise ValueError('Deku Tree escape already requests Step02.')
+    from evfl.util import make_index
+    # Kaepora's own request (Goto_HyruleCastle Event14), banner hidden.
+    request = flow.action(FIELD_STEP, str(escape.data.actor.v.identifier), quest_guard.STEP_ACTION,
+                          dict(params, StepName='Step02', IsIgnoreCompletedChallenge=True,
+                               IsIgnoreChallengeProgressUI=True), escape.data.nxt.v)
+    escape.data.nxt = make_index(request)
+    result, _ = flow.write()
+    result, report = quest_guard.guard_requests(result, 'Goto_HyruleCastle', steps, ('Step02',),
+                                                FIELD_STEP_SKIP, prefix=FIELD_STEP_GUARD)
+    if [event for event, _, _ in report['guarded']] != [FIELD_STEP]:
+        raise ValueError('Kaepora field step wrongly guarded.')
+    return result, {'after': ESCAPE_STEP01, 'event': FIELD_STEP, 'skip_when': FIELD_STEP_SKIP}
 
 
 def skip_first_field_advice(raw):

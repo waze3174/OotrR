@@ -17,7 +17,9 @@ every cutscene and dialogue they apply to:
 * the area presentation cutscenes (flow-driven, ``AREA_PRESENTATIONS``) receive
   the native ``EventTriggerSkipAcceptStart`` … ``EventTriggerSkipEnd`` window
   used by the great fairy fountains, and their non-pausing rows use ``FlowchartEvent``;
-  their area name frame opens after the window, only when it was not skipped;
+  their area name frame opens after the window, only when it was not skipped.
+  :mod:`oot_rando.patching.area_presentations` (always on) then pre-marks or
+  auto-skips every one of them;
 * no skip window covers a flow that talks (``DIALOGUE_ACTIONS``);
 * optionally, chests skip their opening performance (``quick_chest`` for the big
   ones, ``quick_small_chest`` for the small ones) while Link still holds the item up.
@@ -308,13 +310,26 @@ def flow_path(name):
     return FLOWS + name + '.bfevfl.zs'
 
 
-def add_skip_window(raw):
+# Screen after a skip: the game fades out when + is pressed and jumps to SkipEnd.
+# ``FadeInType 0`` (fairy fountains) leaves the fade-in to what comes next, a camera
+# cut of the rest of the scene. A presentation has nothing left after its window, so
+# the screen stayed black (19/11). As the Water Temple's skippable scenes do
+# (Dm_WaterTemple_0020/0021/0022: ``FadeInType 2``, then on the skipped case of
+# ``EventQueryIsEventSkipedMostRecent`` an ``EventEventFadeIn``), the window now
+# fades the screen back in itself when it was skipped.
+SKIP_END_FADE_IN_TYPE = 2
+SKIP_FADE_IN_PARAMS = {'IsNoPlayAnime': False, 'Color': 0, 'Length': 1, 'IsWaitEnd': False}
+
+
+def add_skip_window(raw, fade_in=True):
     """Wrap every root entry of a cutscene flow in a native skip window.
 
     ``EventSystemActor.EventTriggerSkipAcceptStart`` becomes the entry's first
     event; ``EventTriggerSkipEnd`` follows the last join of the entry's top-level
     chain (the cleanup after it — camera reset, ducking release — still runs),
-    or ends the chain when it has no join. Returns (bytes, report).
+    or ends the chain when it has no join. ``fade_in``: a skip fades the screen
+    back in (see :data:`SKIP_END_FADE_IN_TYPE`; False rebuilds seeds made before
+    19/11). Returns (bytes, report).
     """
     from evfl.actor import Actor
     from evfl.common import ActorIdentifier, StringHolder
@@ -351,7 +366,20 @@ def add_skip_window(raw):
                for name in ('EventTriggerSkipAcceptStart', 'EventTriggerSkipEnd', 'EventWait')}
     location_uis = [e for e in chart.events if isinstance(e.data, ActionEvent)
                     and e.data.actor_action.v.v == LOCATION_UI_ACTION]
-    skipped_query = holder(actor.queries, 'EventQueryIsEventSkipedMostRecent') if location_uis else None
+    skipped_query = (holder(actor.queries, 'EventQueryIsEventSkipedMostRecent')
+                     if location_uis or fade_in else None)
+    ui_owner = None
+    if fade_in:
+        ui_actor = next((a for a in chart.actors if a.identifier.name == 'UISystemActor'
+                         and a.identifier.sub_name == ''), None)
+        if ui_actor is None:
+            ui_actor = Actor()
+            ui_actor.identifier = ActorIdentifier('UISystemActor')
+            ui_actor.concurrent_clips = 1
+            ui_actor.params = Container()
+            ui_actor.params.data = dict(GAMEDATA_ACTOR_PARAMS)
+            chart.actors.append(ui_actor)
+        ui_owner = (ui_actor, holder(ui_actor.actions, 'EventEventFadeIn'))
     location_names = {}   # deferred frame event -> (LocationName, (actor, action))
 
     def gamedata_owner():
@@ -482,7 +510,8 @@ def add_skip_window(raw):
         entry_ends, records = [], []
         for index, anchor in enumerate(ends):
             end = new_event(f'RandoSkipEnd_{entry.name}_{index}', 'EventTriggerSkipEnd',
-                            {'SpecialEventActionType': 4, 'FadeInType': 0})
+                            {'SpecialEventActionType': 4,
+                             'FadeInType': SKIP_END_FADE_IN_TYPE if fade_in else 0})
             end.data.nxt = anchor.data.nxt
             anchor.data.nxt = make_index(end)
             entry_ends.append(end)
@@ -491,6 +520,22 @@ def add_skip_window(raw):
         if deferred:
             for record in records:
                 record['location_ui'] = deferred
+        if fade_in:
+            for index, (end, record) in enumerate(zip(entry_ends, records)):
+                after = end.data.nxt.v if end.data.nxt is not None else None
+                fade = new_event(f'RandoSkipFadeIn_{entry.name}_{index}', None, dict(SKIP_FADE_IN_PARAMS), ui_owner)
+                fade.data.nxt = make_index(after)
+                check = Event()
+                check.name, check.data = f'RandoSkipFadeCheck_{entry.name}_{index}', SwitchEvent()
+                check.data.actor, check.data.actor_query = make_rindex(actor), make_rindex(skipped_query)
+                check.data.params = None
+                check.data.cases = {0: make_index(fade)}   # case 0 = skipped
+                if after is not None:
+                    check.data.cases[1] = make_index(after)
+                chart.events.append(check)
+                expected[check.name] = None
+                end.data.nxt = make_index(check)
+                record['fade_in'] = fade.name
         report += records
     if not report:
         raise ValueError('No cutscene entry to make skippable.')
@@ -507,6 +552,12 @@ def add_skip_window(raw):
             raise ValueError('Cutscene entry not attached to the skip window.')
         if events[record['after']].data.nxt.v.name != record['end']:
             raise ValueError('Misplaced skip window end.')
+        if fade_in:
+            check = events[record['end']].data.nxt.v
+            fade = check.data.cases[0].v
+            if (check.data.actor_query.v.v != 'EventQueryIsEventSkipedMostRecent'
+                    or fade.name != record['fade_in'] or fade.data.actor_action.v.v != 'EventEventFadeIn'):
+                raise ValueError('Skip window without its fade-in: ' + record['entry'])
     return result, report
 
 

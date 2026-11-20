@@ -133,12 +133,13 @@ class CastleLogic(unittest.TestCase):
                     self.assertFalse(state.has('Zeldas Lullaby'))
                     self.assertTrue(state.has('Met Zelda'))
 
-    def test_ranch_follows_meeting_zelda_not_the_letter(self):
-        # Talon is woken once Zelda was met (the castle quest), never by the letter item.
+    def test_ranch_without_the_letter(self):
+        # The ranch reads the castle quest ('Met Zelda'), never the letter item: with or
+        # without the castle skip, Malon and Talon's cuccos need no Zelda's Letter.
         for skip, expected in ((True, True), (False, True)):
             options = dict(rando_options.defaults(), skip_child_zelda=skip)
             logic = Logic(self.data, ap_settings(options, True))
-            items = Counter({item: 9 for item in logic.referenced if item != 'Zeldas Letter'})
+            items = Counter({item: 9 for item in logic.referenced if item not in ('Zeldas Letter', 'Met Zelda')})
             _, found, _ = logic.sweep({'Song from Malon': None, 'LLR Talons Chickens': None},
                                       logic.new_state(items))
             for location in ('Song from Malon', 'LLR Talons Chickens'):

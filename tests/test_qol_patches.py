@@ -215,7 +215,7 @@ class NupTests(unittest.TestCase):
             added = {e.name for e in after.events} - {e.name for e in before.events}
             deferred = [r for r in report[name] if 'location_ui' in r]
             self.assertEqual(len(added), len({r['entry'] for r in report[name]}) + len(report[name])
-                             + 3 * len(deferred), name)
+                             + 3 * len(deferred) + 2 * len(report[name]), name)
             entries = {e.name: e for e in after.entry_points}
             events = {e.name: e for e in after.events}
             for record in report[name]:
@@ -228,8 +228,18 @@ class NupTests(unittest.TestCase):
             opened = [e for e in after.events if getattr(e.data, 'actor_action', None) is not None
                       and e.data.actor_action.v.v == self.q.LOCATION_UI_ACTION]
             self.assertTrue(opened and all(e.name.startswith('RandoLocationUI_') for e in opened), name)
+            # Skipped: the window fades the screen back in itself (black screen, 19/11).
+            for record in report[name]:
+                end = events[record['end']]
+                self.assertEqual(end.data.params.data['FadeInType'], 2)
+                fade_check = end.data.nxt.v
+                self.assertEqual(fade_check.data.actor_query.v.v, 'EventQueryIsEventSkipedMostRecent')
+                fade = fade_check.data.cases[0].v
+                self.assertEqual(fade.data.actor.v.identifier.name, 'UISystemActor')
+                self.assertEqual(fade.data.actor_action.v.v, 'EventEventFadeIn')
+                self.assertIs(fade.data.nxt.v, fade_check.data.cases[1].v)
             for record in deferred:
-                check = events[record['end']].data.nxt.v
+                check = events[record['end']].data.nxt.v.data.cases[1].v
                 self.assertEqual(check.data.actor_query.v.v, 'EventQueryIsEventSkipedMostRecent')
                 self.assertEqual(check.data.cases[1].v.data.actor_action.v.v, self.q.LOCATION_UI_ACTION)
                 # Skipped or not, the area is marked visited (the map menu needs it).
