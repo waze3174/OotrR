@@ -134,7 +134,8 @@ class Settings:
         if self.archipelago is not None:
             from oot_rando.archipelago.bridge import check_patch
             check_patch(self.archipelago)
-            if self.full is None or self.full != rando_options.validate(self.archipelago['options']):
+            if self.full is None or self.full != rando_options.validate(
+                    rando_options.restored(self.archipelago['options'])):
                 raise ValueError('The full randomizer options must be those of the Archipelago patch.')
             if self.open_forest != self.archipelago['open_forest']:
                 raise ValueError('"Open the way" must match the Archipelago patch.')
@@ -165,7 +166,7 @@ class Settings:
         # ``full`` is omitted when unset so that earlier seeds keep their identity.
         return {f.name: (sorted(getattr(self, f.name)) if f.name in ('pool', 'excluded_checks')
                         else {name: self.categories.get(name, False) for name in sorted(CATEGORIES)}
-                        if f.name == 'categories' else dict(sorted(self.full.items()))
+                        if f.name == 'categories' else dict(sorted(rando_options.recorded(self.full).items()))
                         if f.name == 'full' else getattr(self, f.name))
                 for f in fields(self) if not (f.name in ('full', 'archipelago') and getattr(self, f.name) is None)
                 and not (f.name in OPTIONAL_SKIPS and not getattr(self, f.name))}
@@ -187,6 +188,8 @@ class Settings:
             raise ValueError('Unknown settings or invalid format.')
         if 'seed' not in value:
             raise ValueError('The seed is required.')
+        if isinstance(value.get('full'), dict):
+            value['full'] = rando_options.restored(value['full'])
         return cls(**value).validate()
 
 
@@ -480,7 +483,8 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             # Story locks broken by items found in any order (patching/story_fixes.py).
             from oot_rando.patching import story_fixes
             story = {}
-            for path, key, fix in story_fixes.FLOW_FIXES:
+            stones = story_fixes.escape_stones(settings.full)
+            for path, key, fix in story_fixes.flow_fixes(stones):
                 extra_raw[path], story[key] = fix(extra_raw.get(path) or decompress(read(path), d))
             # Kaepora's first field arrival never plays (its effects are set at the start):
             # its quest step follows the Deku Tree escape instead (patching/owl_advice.py).
@@ -553,9 +557,9 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             # Sheik in Kakariko: the burning scene on the three medallions, not the three sages.
             extra_raw[GAMEDATA], story['kakariko_burning_medallions'] = story_fixes.kakariko_burning_on_medallions(
                 extra_raw.get(GAMEDATA) or decompress(read(GAMEDATA), d))
-            # Zelda's escape on the Goron Ruby and the Zora Sapphire, checked at every item get.
+            # Zelda's escape on the stones held, checked at every item get.
             extra_raw[ACTION_GUIDE_FLOW], story['zelda_escape_item_get'] = story_fixes.zelda_escape_on_item_get(
-                extra_raw[ACTION_GUIDE_FLOW])
+                extra_raw[ACTION_GUIDE_FLOW], stones)
             # The clock runs before Zelda (Impa's send-off flag set at the start).
             story['clock'] = story_fixes.CLOCK_FLAG
             # Zones open from the start, kept open (patching/world_openings.py).

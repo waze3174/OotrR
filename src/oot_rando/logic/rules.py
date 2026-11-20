@@ -9,6 +9,7 @@ import copy
 import re
 from collections import defaultdict
 
+from oot_rando.logic import rando_options
 from oot_rando.logic.world import (REMAKE_EXIT_RULES, REMAKE_LOCATION_REGIONS,  # noqa: F401
                                    REMAKE_LOCATION_RULES, World)
 
@@ -21,7 +22,7 @@ MEDALLIONS = ('Forest Medallion', 'Fire Medallion', 'Water Medallion', 'Shadow M
 # application does not patch must keep these values, both in game and in logic.
 AP_VANILLA_SETTINGS = {
     'logic_rules': 'glitchless', 'open_forest': 'closed', 'open_kakariko': 'closed',
-    'open_door_of_time': False, 'zora_fountain': 'closed', 'gerudo_fortress': 'normal',
+    'open_door_of_time': False, 'spiritual_stones': rando_options.UNRECORDED['spiritual_stones'], 'zora_fountain': 'closed', 'gerudo_fortress': 'normal',
     'open_gerudo_valley_bridge': False,
     'bridge': 'vanilla', 'bridge_stones': 3, 'bridge_medallions': 6, 'bridge_rewards': 9,
     'bridge_tokens': 100, 'bridge_hearts': 20, 'trials': 6,
@@ -39,6 +40,20 @@ AP_VANILLA_SETTINGS = {
     'shuffle_child_trade': 'vanilla', 'blue_fire_arrows': False, 'had_night_start': False,
     'shuffle_master_sword': False, 'shuffle_gerudo_card': False, 'skip_child_zelda': False,
 }
+
+# Zelda's escape and what it opens (the Ocarina of Time, the Song of Time, the Master Sword
+# pedestal), by value of ``spiritual_stones``. The rules of the value the logic files carry
+# (``rando_options.UNRECORDED``) stay in the JSON, which keeps the world fingerprint of the
+# seeds and patches made before the option; the other value replaces them when the rules compile.
+ESCAPE_RULES = {
+    'all': {'HF Ocarina of Time Item': 'is_child and has_all_stones',
+            'Song from Ocarina of Time': "is_child and has_all_stones and 'Met Zelda'",
+            'Master Sword Pedestal': "open_door_of_time or (has_all_stones and 'Met Zelda')"},
+    'vanilla': {'HF Ocarina of Time Item': "is_child and Goron_Ruby and Zora_Sapphire and 'Met Zelda'",
+                'Song from Ocarina of Time': "is_child and Goron_Ruby and Zora_Sapphire and 'Met Zelda'",
+                'Master Sword Pedestal': "open_door_of_time or (Goron_Ruby and Zora_Sapphire and 'Met Zelda')"},
+}
+PEDESTAL_LOCATIONS = ('Master Sword Pedestal', 'ToT Master Sword')
 
 
 # AP Rules.set_shop_rules: Python-only rules added to every location selling
@@ -234,6 +249,7 @@ class Logic:
                 if location == 'ToT Master Sword':
                     rule = REMAKE_LOCATION_RULES.get('Master Sword Pedestal', rule)
                 rule = REMAKE_LOCATION_RULES.get(location, rule)
+                rule = self._escape_rule(location, rule)
                 extra_rule = shop_rule(data.vanilla_item(location))
                 if extra_rule:
                     rule = f'({rule}) and ({extra_rule})'
@@ -258,6 +274,13 @@ class Logic:
             raise ValueError('Unknown AP regions: ' + ', '.join(sorted(missing)))
 
     # ------------------------------------------------------------------ rules
+    def _escape_rule(self, location, rule):
+        """``rule`` of a location behind Zelda's escape, as the ``spiritual_stones`` setting asks."""
+        stones = self.settings['spiritual_stones']
+        if stones == rando_options.UNRECORDED['spiritual_stones']:
+            return rule
+        return ESCAPE_RULES[stones].get('Master Sword Pedestal' if location in PEDESTAL_LOCATIONS else location, rule)
+
     @staticmethod
     def _parse(text):
         return ast.parse(' '.join(text.split()), mode='eval').body

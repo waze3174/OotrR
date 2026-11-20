@@ -163,8 +163,8 @@ def vname(group_id):
 
 def ap_settings(options, open_forest):
     values = {name: options[name] for name in ('open_kakariko', 'open_door_of_time', 'zora_fountain',
-                                               'gerudo_fortress', 'open_gerudo_valley_bridge', 'starting_age',
-                                               'bridge', 'trials',
+                                               'spiritual_stones', 'gerudo_fortress', 'open_gerudo_valley_bridge',
+                                               'starting_age', 'bridge', 'trials',
                                                'shuffle_ganon_bosskey', 'big_poe_count', 'chicken_count',
                                                'free_scarecrow', 'shuffle_child_trade', 'logic_rules',
                                                'shuffle_master_sword', 'shuffle_gerudo_card',

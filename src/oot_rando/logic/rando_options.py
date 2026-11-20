@@ -113,6 +113,11 @@ OPTIONS = [
            'The Door of Time stands open and the sword can be pulled without the Spiritual Stones or '
            'the Song of Time. Zelda\'s escape still gives the Ocarina of Time and the Song of Time. '
            'To be confirmed in game.', kind='bool', experimental=(True,)),
+    Option('spiritual_stones', 'World', 'Require Spiritual Stones',
+           (('all', 'Require all', OK), ('vanilla', 'Vanilla', OK)), 'all',
+           'Which stones Zelda\'s escape asks for, and so the Ocarina of Time, the Song of Time and the '
+           'Master Sword pedestal behind it. Require all: the Kokiri Emerald, the Goron Ruby and the Zora '
+           'Sapphire. Vanilla: the Goron Ruby and the Zora Sapphire only, as in the original game.'),
     Option('zora_fountain', 'World', 'King Zora',
            (('closed', 'Ruto\'s Letter required', OK), ('adult', 'Moved for adult', NO_ADAPTER),
             ('open', 'Always moved', OK)), 'closed',
@@ -337,6 +342,29 @@ BY_NAME = {option.name: option for option in OPTIONS}
 TABS = ('Logic', 'World', 'Goal', 'Items', 'Dungeons', 'Souls', 'Quality of life')
 OUT_OF_SCOPE = ('Entrance shuffle, Master Quest, multiworld and gossip stone hints: out of scope '
                 'for this version, AP default values enforced (no shuffling).')
+
+
+# Options added after a release, left out of the stored settings at this value: stored settings
+# without the option mean it, and seeds made before the option keep their identity. The builds
+# before spiritual_stones always asked for the Goron Ruby and the Zora Sapphire only.
+UNRECORDED = {'spiritual_stones': 'vanilla'}
+
+
+def recorded(values):
+    """``values`` without the options at their unrecorded value: what a seed stores and hashes."""
+    return {name: value for name, value in values.items() if UNRECORDED.get(name) != value}
+
+
+def restored(stored):
+    """Stored settings (``recorded``) with the options they lack at their unrecorded value.
+
+    For settings, seed strings and patches read back; new settings start from ``defaults()``."""
+    return {**UNRECORDED, **stored}
+
+
+def stored_value(values, name):
+    """Option ``name`` in stored settings (``recorded``, so it may be missing)."""
+    return values.get(name, UNRECORDED.get(name, BY_NAME[name].default))
 
 
 def defaults():
