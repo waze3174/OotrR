@@ -1,6 +1,6 @@
 # Live test plan
 
-Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.6.1 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 to 3), the state, a
+Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.7.0 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 to 4, the checks' ids and places), show in the world's places, words and camera projection, the String64 and pause reads, the state, a
 region's list of checks, the game-data reader over a fake GameData, the controls (repeat, what the game doesn't see), the browsing, the
 icons file's index, the postcard's and the console's settings and files, the console's lines and fading, its mailbox (half-written
 writes, a full ring, the status line) and where the console goes next to every postcard. OotrR's `tests/test_console_bridge.py` covers
@@ -144,6 +144,31 @@ Archipelago's own text client) helps to send items and chat.
   Disconnect by hand: it doesn't connect again until the seed is opened again. Generate the seed again from the same patch: the file
   is kept.
 - On a Linux build of the emulator (native, not Wine), the same with the application running natively on Linux.
+
+## 3g. Show in the world (0.7.0)
+
+Needs a seed made by OotrR with this module (or one updated with `update-tracker --nup GAME.nup`): its `seed.trk` is version 4.
+
+- Open a region's list (Kokiri Forest): under the 18 rows, the highlighted check's name in bold with `key <its id>` dim on the right
+  (`KokiriForest#...` for a world chest, a bare number for the first chests), then `A: show in the world     N m away` in white.
+  Move the highlight: both rows follow it. The hint line reads `... A: show in the world     B: back`.
+- Mido's House chest, from outside his house: A. The row turns gold, `Shown in the world: ...`. A gold box with a beam shows where the
+  chest is, through the house's walls; the distance goes down as you walk to it (about every half second with the panel open).
+  Say whether the box sits on the chest (its base at the chest's base) or how far off it is, and whether the beam is upright.
+- Close the panel: the band at the top centre names the chest and says `N m away` (`, N m up` from 2 m), and `turn left`, `turn right`,
+  `look up`, `look down` or `behind you` when the chest is off the picture. Turn the camera round: the box stays on the chest and the
+  direction words change. Check that the lines are clipped cleanly at the screen's edges and when the camera is inside the box.
+- Pause (+): the marker and the band go; unpause: they come back.
+- Leave Kokiri Forest (to the Lost Woods): the marker goes and the band says `In Kokiri Forest (child)`. Go back: it is drawn again.
+- A again on the same check in the list: the marker and band go. A on another check: that one is shown instead.
+- A check of another region (a dungeon's chest) from Kokiri Forest: the line says `In <its map>` and the band names it.
+- An NPC's gift or an event (a song, a Deku Tree item): `No place in the world for this check`, A does nothing.
+- A seed made before 0.7.0 and not updated (version 3 `seed.trk`): every check says `No places in this seed's file: ...` and A
+  does nothing; after `update-tracker --nup` they have places.
+- With sloperinaGZ (`subsdk9`) enabled: its collision boxes and our marker both draw, its menu (R + right stick down) still opens, and
+  nothing crashes. With the console at the top: the band goes to the bottom.
+- 720p and 1080p, docked and handheld: the panel's list (18 rows, two detail rows, the hint) fits the screen with both warning lines.
+- A check in a scene with child and adult layouts (Kokiri Forest), as child and as adult: the marker in both if the check is in both.
 
 ## 4. What it shows
 
