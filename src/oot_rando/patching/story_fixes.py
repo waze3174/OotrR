@@ -578,7 +578,7 @@ def zelda_escape_on_item_get(raw, stones):
     return result, {'flow': ACTION_GUIDE_FLOW, 'start': start.name, 'stones': list(stones)}
 
 
-def zelda_escape_door_flow(raw, stones):
+def zelda_escape_door_flow(raw, stones=STONE_SETS['all']):
     """``DoorOfTime``: stone check after the send-off, native check never backwards.
 
     Returns (bytes, report)."""
@@ -626,7 +626,7 @@ def zelda_escape_door_flow(raw, stones):
                     'dungeon_end': 'RandoDungeonEndStones'}
 
 
-def zelda_escape_on_talk(raw, stones):
+def zelda_escape_on_talk(raw, stones=STONE_SETS['all']):
     """``Npc_Hylia_Zelda_Child/Talk``: the stone check first, at every talk to Zelda.
 
     17/11 (Discord, 0.6.5): the last stone got after the send-off (from a Great Fairy)
