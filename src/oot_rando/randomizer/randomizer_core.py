@@ -739,8 +739,9 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
             map_root = lambda path: Byml(raw_maps[path] if path in raw_maps else decompress(read(path), d)).root
             settings_raw = current_raw(chest_flags.EVENT_SETTINGS)
             settings_rows = {row['__RowId']: row for row in Byml(settings_raw).root}
-            chests = full['placements'] + chest_flags.vanilla_placements(full['matches'], full['placements'])
-            records, skipped = chest_flags.plan_records(chests, map_root, settings_identity(settings), settings_rows)
+            # Not ``chests``: that name holds the Kokiri chests the spoiler lists below.
+            flagged = full['placements'] + chest_flags.vanilla_placements(full['matches'], full['placements'])
+            records, skipped = chest_flags.plan_records(flagged, map_root, settings_identity(settings), settings_rows)
             for resource, edits in sorted(chest_flags.map_edits(records).items()):
                 raw_maps[resource] = patch_strings(raw_maps[resource] if resource in raw_maps
                                                    else decompress(read(resource), d), edits)
