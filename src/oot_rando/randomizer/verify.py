@@ -138,8 +138,8 @@ def verify(nup_path, seed_dir):
             repeat_boards[shelf['resource']].append(shelf)
     report ={'maps': 0, 'rewards': 0, 'presence': 0, 'events': 0}
     always_skulltulas = bool((manifest.get('settings') or {}).get('skulltulas_always_present'))
-    # Per-chest opening flags: each shuffled chest's own event (chest_flags), rebuilt
-    # from the spoiler's chests and the original maps.
+    # Per-chest opening flags: each chest's own event (chest_flags), rebuilt from the
+    # spoiler's chests, the chests left in place and the original maps.
     chest_records = manifest.get('skips', {}).get('chest_flags', {}).get('records', [])
     if manifest.get('skips', {}).get('chest_flags') is not None:
         from oot_rando.patching import chest_flags
@@ -148,6 +148,7 @@ def verify(nup_path, seed_dir):
         chest_spoiler = [{'id': p['id'], 'source': 'chest',
                           'variants': [(v['resource'], v['index']) for v in groups.get(p['id'], []) if 'index' in v]}
                          for p in full if p.get('source') == 'chest']
+        chest_spoiler += chest_flags.vanilla_placements(plan['matches'], full)
         original_map = lambda path: Byml(decompress(nup.read(members[path]), d)).root
         expected_records, _ = chest_flags.plan_records(chest_spoiler, original_map, manifest['seed_id'], original_rows)
         if expected_records != chest_records:

@@ -1914,6 +1914,8 @@ class Application:
                 elif not completed and state.get('missing_souls'):
                     from oot_rando.patching.soul_adapter import soul_name
                     label += ' • soul: ' + ', '.join(soul_name(s, False) for s in state['missing_souls'])
+                if not completed and state.get('untracked'):
+                    label += ' • not tracked'
                 tree.insert(zones[region], 'end', iid=check['id'], text=name, values=(label, reward, kind), tags=('done' if completed else access,))
                 visible += 1
             tree.bind('<<TreeviewOpen>>', lambda event, widget=tree: self.remember_zone(widget, True))
