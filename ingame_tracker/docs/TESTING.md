@@ -1,6 +1,6 @@
 # Live test plan
 
-Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.7.0 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 to 4, the checks' ids and places), show in the world's places, words and camera projection, the String64 and pause reads, the state, a
+Nothing in 0.1.0 has run in the game; 0.2.0's icons were seen in the game (13/11: upright, right colours, smooth), 0.2.1 to 0.7.0 not yet. The PC tests (`make test`) cover the seed file's parser (versions 1 to 4, the checks' ids and places), show in the world's places, words and camera projection, the String64 and pause reads, what the pause hides, the state, a
 region's list of checks, the game-data reader over a fake GameData, the controls (repeat, what the game doesn't see), the browsing, the
 icons file's index, the postcard's and the console's settings and files, the console's lines and fading, its mailbox (half-written
 writes, a full ring, the status line) and where the console goes next to every postcard. OotrR's `tests/test_console_bridge.py` covers
@@ -145,7 +145,19 @@ Archipelago's own text client) helps to send items and chat.
   is kept.
 - On a Linux build of the emulator (native, not Wine), the same with the application running natively on Linux.
 
-## 3g. Show in the world (0.7.0)
+## 3g. Paused (0.6.2)
+
+- Turn the postcard on and, on an Archipelago seed, keep the console on with a few lines (Fade Permanent keeps them). Close the panel.
+- Pause the game: within about a tenth of a second the card and the console go, and the log says `the game is paused: the postcard
+  and the console hide`. Unpause: both come back as they were (`the game is playing: the postcard and the console show again`).
+- Open the game's other screens (the items, the map, the equipment): note which ones hide the card (the game counts them as a pause)
+  and which keep it.
+- While paused, open the panel (R + right stick up): it opens and works as ever (the regions, a region's list, Settings, the Postcard
+  and Console pages with their previews). Say whether R or the right stick, pressed a moment before the other, also turns the pause
+  screen's page or moves something in it. Close it: the card and the console stay hidden until the game is unpaused.
+- A local seed with the postcard off and the console off: pausing logs nothing (the pause isn't read).
+
+## 3h. Show in the world (0.7.0)
 
 Needs a seed made by OotrR with this module (or one updated with `update-tracker --nup GAME.nup`): its `seed.trk` is version 4.
 

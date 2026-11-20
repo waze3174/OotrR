@@ -241,7 +241,7 @@ bool gamedata_has_bool64(const gamedata_t *data)
   return data->bool64_type != 0;
 }
 
-/* --- String64 and the pause, for the place shown in the world (locate.h) ------------------------ */
+/* --- String64, for the place shown in the world (locate.h) ----------------------------------- */
 
 bool gamedata_string(const gamedata_t *data, uint32_t hash, char *out, size_t room)
 {
@@ -266,6 +266,8 @@ bool gamedata_string(const gamedata_t *data, uint32_t hash, char *out, size_t ro
   out[i] = 0;
   return true;
 }
+
+/* --- the game's pause ------------------------------------------------------------------------ */
 
 bool gamedata_paused(const gamedata_t *data)
 {

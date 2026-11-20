@@ -112,8 +112,8 @@ what it holds). While it is open the game does not see R, the right stick, A, B,
 regions, **Settings**, has two pages. **Postcard** turns on a small card with only the icons (items, songs, temples, dungeon keys) in a
 corner of the screen; its position, size and opacity are set there. **Console** shows Archipelago messages over the game (on by
 default for an Archipelago seed, see [below](#archipelago-multiworld)); its position, opacity, lines, fade and the kinds of message
-shown are set there. Both are kept in small files on the SD card. It only reads the game's save data; it never changes the game or
-the save.
+shown are set there. Both are kept in small files on the SD card; the card and the console hide while the game is paused (0.6.2). It only
+reads the game's save data; it never changes the game or the save.
 
 The seed folder gets `romfs/RandoTracker/seed.trk` (the flags to watch, the checks' ids and places in the game's maps, no
 item placements; the format is in
