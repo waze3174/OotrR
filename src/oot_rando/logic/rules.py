@@ -41,19 +41,16 @@ AP_VANILLA_SETTINGS = {
     'shuffle_master_sword': False, 'shuffle_gerudo_card': False, 'skip_child_zelda': False,
 }
 
-# Zelda's escape and what it opens (the Ocarina of Time, the Song of Time, the Master Sword
-# pedestal), by value of ``spiritual_stones``. The rules of the value the logic files carry
-# (``rando_options.UNRECORDED``) stay in the JSON, which keeps the world fingerprint of the
-# seeds and patches made before the option; the other value replaces them when the rules compile.
+# Zelda's escape (the Ocarina of Time and the Song of Time), by value of ``spiritual_stones``.
+# The logic files keep upstream's rules ("all"), so the world fingerprint stays upstream's; both
+# values replace them when the rules compile. The Master Sword pedestal no longer waits for the
+# escape (story_fixes.door_song_before_escape), so it is the same under both.
 ESCAPE_RULES = {
     'all': {'HF Ocarina of Time Item': 'is_child and has_all_stones',
-            'Song from Ocarina of Time': "is_child and has_all_stones and 'Met Zelda'",
-            'Master Sword Pedestal': "open_door_of_time or (has_all_stones and 'Met Zelda')"},
+            'Song from Ocarina of Time': "is_child and has_all_stones and 'Met Zelda'"},
     'vanilla': {'HF Ocarina of Time Item': "is_child and Goron_Ruby and Zora_Sapphire and 'Met Zelda'",
-                'Song from Ocarina of Time': "is_child and Goron_Ruby and Zora_Sapphire and 'Met Zelda'",
-                'Master Sword Pedestal': "open_door_of_time or (Goron_Ruby and Zora_Sapphire and 'Met Zelda')"},
+                'Song from Ocarina of Time': "is_child and Goron_Ruby and Zora_Sapphire and 'Met Zelda'"},
 }
-PEDESTAL_LOCATIONS = ('Master Sword Pedestal', 'ToT Master Sword')
 
 
 # AP Rules.set_shop_rules: Python-only rules added to every location selling
@@ -276,10 +273,7 @@ class Logic:
     # ------------------------------------------------------------------ rules
     def _escape_rule(self, location, rule):
         """``rule`` of a location behind Zelda's escape, as the ``spiritual_stones`` setting asks."""
-        stones = self.settings['spiritual_stones']
-        if stones == rando_options.UNRECORDED['spiritual_stones']:
-            return rule
-        return ESCAPE_RULES[stones].get('Master Sword Pedestal' if location in PEDESTAL_LOCATIONS else location, rule)
+        return ESCAPE_RULES[self.settings['spiritual_stones']].get(location, rule)
 
     @staticmethod
     def _parse(text):

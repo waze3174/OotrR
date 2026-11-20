@@ -199,6 +199,25 @@ def verify(nup_path, seed_dir):
     unpack = lambda path, raw: decompress(raw, d) if path.endswith('.zs') else raw
     report.update(cuccos.check_seed(manifest, members, lambda path: unpack(path, nup.read(members[path])),
                                     lambda path: unpack(path, (seed_dir / 'romfs' / path).read_bytes())))
+    if (manifest.get('skips', {}).get('story_fixes') or {}).get('scene_conditions') is not None:
+        if not story_fixes.scene_expressions_applied(out(GAMEDATA)):
+            raise ValueError('Unexpected scene conditions in the game data.')
+        opened = bool(((manifest.get('settings') or {}).get('full') or {}).get('open_door_of_time'))
+        for module, key, fix in story_fixes.scene_module_fixes():
+            expected, _ = fix(nup.read(members[module]))
+            if module == story_fixes.DOOR_MODULE and opened:
+                from oot_rando.patching.world_openings import door_always_open
+                expected = door_always_open(expected)
+            if (seed_dir / 'romfs' / module).read_bytes() != expected:
+                raise ValueError('Unexpected scene condition module: ' + module)
+        report['story_fixes'] = report.get('story_fixes', 0) + 1
+    if (manifest.get('skips', {}).get('story_fixes') or {}).get('sheik_temple') is not None:
+        module = story_fixes.SHEIK_TEMPLE_MODULE
+        expected, _ = story_fixes.sheik_leaves_the_pedestal(nup.read(members[module]))
+        if (not story_fixes.sheik_temple_applied(out(GAMEDATA))
+                or (seed_dir / 'romfs' / module).read_bytes() != expected):
+            raise ValueError('Unexpected temple Sheik condition.')
+        report['story_fixes'] = report.get('story_fixes', 0) + 1
     chest_flows = {}
     for record in chest_records:
         chest_flows.setdefault(record['flow'], []).append(record)
@@ -302,25 +321,21 @@ def verify(nup_path, seed_dir):
             if path == SWORD_CHEST_FLOW and skips.get('sword_chest'):
                 original = skip_kokiri_sword_cutscene(original)[0]
                 report['comfort_flows'] = report.get('comfort_flows', 0) + 1
+            from oot_rando.patching.shop_bottles import DISPLAY_SHOP_FLOW, patch_display_shop
+            if path == DISPLAY_SHOP_FLOW and 'shop_full_bottles' in (skips.get('story_fixes') or {}):
+                original = patch_display_shop(original)[0]
+                report['story_fixes'] = report.get('story_fixes', 0) + 1
+            from oot_rando.patching import owl_advice
+            if path == owl_advice.ESCAPE_FLOW and 'owl_field_step' in (skips.get('story_fixes') or {}):
+                from oot_rando.patching.quest_guard import CHALLENGES, challenge_steps
+                original = owl_advice.field_step_after_escape(
+                    original, challenge_steps(decompress(nup.read(members[CHALLENGES]), d)))[0]
+                report['story_fixes'] = report.get('story_fixes', 0) + 1
             from oot_rando.patching import story_fixes
             for fixed_path, key, fix in story_fixes.flow_fixes(stones):
                 if path == fixed_path and key in (skips.get('story_fixes') or {}):
                     original = fix(original)[0]
                     report['story_fixes'] = report.get('story_fixes', 0) + 1
-            from oot_rando.patching import owl_advice
-            if path == owl_advice.ESCAPE_FLOW and 'owl_field_step' in (skips.get('story_fixes') or {}):
-                from oot_rando.patching.quest_guard import CHALLENGES, challenge_steps
-                original, details = owl_advice.field_step_after_escape(
-                    original, challenge_steps(decompress(nup.read(members[CHALLENGES]), d)))
-                if json.loads(json.dumps(details)) != skips['story_fixes']['owl_field_step']:
-                    raise ValueError('Kaepora field step differs from the spoiler.')
-                report['story_fixes'] = report.get('story_fixes', 0) + 1
-            from oot_rando.patching.shop_bottles import DISPLAY_SHOP_FLOW, patch_display_shop
-            if path == DISPLAY_SHOP_FLOW and 'shop_full_bottles' in (skips.get('story_fixes') or {}):
-                original, details = patch_display_shop(original)
-                if json.loads(json.dumps(details)) != skips['story_fixes']['shop_full_bottles']:
-                    raise ValueError('Shop full bottle guards differ from the spoiler.')
-                report['story_fixes'] = report.get('story_fixes', 0) + 1
             if path in ((skips.get('story_fixes') or {}).get('child_castle') or {}):
                 from oot_rando.patching import child_castle_skip
                 from oot_rando.patching.quest_guard import CHALLENGES, challenge_steps

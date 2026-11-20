@@ -17,11 +17,11 @@ class WorldTests(unittest.TestCase):
     def setUpClass(cls):
         cls.world = World()
 
-    def test_the_fingerprint_is_that_of_c9aa25f_ours(self):
+    def test_the_fingerprint_is_that_of_0_7_3_ours(self):
         # Installed seeds keep it (tracker accessibility) and Archipelago patches compare it: it hashes the
         # logic files, so the options that vary the rules (spiritual_stones) do it in Python, not in them.
         # Change this value on purpose only, when the logic files change.
-        self.assertEqual(self.world.fingerprint(), '7bd19a876b03c6fecee24750a38a297118cc4c012f0bdda238ae08546d01d1ea')
+        self.assertEqual(self.world.fingerprint(), '57d7d0b7a9deeed25be9c273b7a03ba4bcc4fdca47361050a6f6242901604c2c')
 
     def test_tables_and_regions(self):
         self.assertEqual(len(self.world.location_table), 1707)
