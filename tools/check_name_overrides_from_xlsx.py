@@ -142,20 +142,34 @@ def read_rows(workbook):
     return rows, remarks
 
 
+def loose_form(name):
+    """The normalized name, also without the ways the sheet writes the scan's labels differently:
+    ``DC room 10 gs`` and ``DC_room10_gs_1 (child)`` agree (a number set apart from the word before
+    it, a missing index taken as 1, the age left out)."""
+    form = re.sub(r'([a-z])(\d)', r'\1 \2', normalize(name))
+    form = re.sub(r' (child|chld|adult)$', '', form)
+    return re.sub(r'\bgs$', 'gs 1', form)
+
+
 class KnownNames:
-    """The names of real checks, by exact name and by normalized form."""
+    """The names of real checks, by exact name, by normalized form and by loose form."""
 
     def __init__(self, names):
         self.names = set(names)
         self.by_form = defaultdict(set)
+        self.by_loose_form = defaultdict(set)
         for name in self.names:
             self.by_form[normalize(name)].add(name)
+            self.by_loose_form[loose_form(name)].add(name)
 
     def resolve(self, current):
-        """``(kind, name or sorted candidates)``: exact, fuzzy (one name of that form), ambiguous or unknown."""
+        """``(kind, name or sorted candidates)``: exact, fuzzy (one name of that form, normalized or
+        loose), ambiguous or unknown."""
         if current in self.names:
             return 'exact', current
         candidates = sorted(self.by_form.get(normalize(current), ()))
+        if not candidates:
+            candidates = sorted(self.by_loose_form.get(loose_form(current), ()))
         if len(candidates) == 1:
             return 'fuzzy', candidates[0]
         return ('ambiguous', candidates) if candidates else ('unknown', current)
