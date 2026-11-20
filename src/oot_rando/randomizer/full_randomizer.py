@@ -584,7 +584,9 @@ def plan(data, options, groups, enemies, seed_key, open_forest=True, progress=No
                      for loc in sphere if loc.startswith('Remake|')}
         return {'beatable': state.has('Triforce'), 'spheres': sphere_of, 'sphere_count': len(spheres),
                 'unreachable': sorted(g for g in logic_locations if vname(g) not in collected),
-                'progressive': progressive_plan(forced, c.natives)}
+                'progressive': progressive_plan(forced, c.natives),
+                # Read by verify: the chests left in place get their opening flag too.
+                'matches': c.matches}
 
     last_error = 'no attempt'
     for attempt in range(MAX_ATTEMPTS):
