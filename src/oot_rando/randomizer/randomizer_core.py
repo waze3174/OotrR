@@ -632,6 +632,22 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
                 for path in event_paths(members, big_poes.FLOW):
                     extra_raw[path] = big_poes.patch_flow(
                         extra_raw[path] if path in extra_raw else decompress(read(path), d), poe_count)
+            # Cuccos to bring back: the cucco lady's pen, its logic module and her lines (patching/cuccos.py).
+            from oot_rando.patching import cuccos
+            cucco_count = settings.full.get('chicken_count', cuccos.VANILLA_COUNT)
+            if cucco_count != cuccos.VANILLA_COUNT:
+                from oot_rando.game.extra_sources import event_paths
+                flows = event_paths(members, cuccos.FLOW)
+                if not flows:
+                    raise ValueError('Cucco minigame flow not found.')
+                for path in flows:
+                    extra_raw[path] = cuccos.patch_flow(
+                        extra_raw[path] if path in extra_raw else decompress(read(path), d), cucco_count)
+                extra_raw[cuccos.LOGIC_MODULE] = cuccos.patch_logic(
+                    extra_raw.get(cuccos.LOGIC_MODULE) or read(cuccos.LOGIC_MODULE), cucco_count)
+                for path in cuccos.message_paths(members):
+                    extra_raw[path], _ = cuccos.patch_messages(
+                        extra_raw.get(path) or decompress(read(path), d), cucco_count)
         skips = {'title_badge': title_badge}
         if settings.full is not None:
             skips['ocarina_guide'] = ocarina_guide
@@ -651,6 +667,8 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, ingam
                 skips['master_sword_flows'] = full['master_sword_flows']
             if settings.full.get('big_poe_count', 10) != 10:
                 skips['big_poes'] = settings.full['big_poe_count']
+            if settings.full.get('chicken_count', 7) != 7:
+                skips['cuccos'] = settings.full['chicken_count']
         current_flow = lambda path: extra_raw[path] if path in extra_raw else decompress(read(path), d)
         # Every seed: area presentations never play (patching/area_presentations.py):
         # pre-marked at the start in full mode, else left on their first frame.

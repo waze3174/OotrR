@@ -166,6 +166,8 @@ OPTION_TIPS = {
                             'every kind of enemy has its own soul. A new game is required.',
     'big_poe_count': 'The Poe collector gives his reward after this many Big Poes (vanilla: 10). '
                      'To be confirmed in game.',
+    'chicken_count': 'The cucco lady in Kakariko gives her reward once this many of her cuccos are back in the '
+                     'pen (vanilla: 7). Her lines name the new number. To be confirmed in game.',
     'skip_child_zelda': 'Start as if Malon, Talon, Zelda and Impa had been met: Zelda\'s Letter and Lullaby '
                         'are shuffled elsewhere. The child castle grounds become optional: their shuffled checks hold '
                         'green rupees, except the Great Fairy. Later events keep their conditions (Kokiri '
@@ -192,7 +194,7 @@ SETTING_GROUPS = (
     ('Dungeon contents', '',
      ['shuffle_mapcompass', 'shuffle_smallkeys', 'key_rings', 'key_rings_list', 'shuffle_bosskeys']),
     ('Enemy souls', '', ['shuffle_enemy_spawns']),
-    ('Minigames', '', ['big_poe_count']),
+    ('Minigames', '', ['big_poe_count', 'chicken_count']),
 )
 # Kept in the settings files (older seeds, AP YAML) but never shown: no effect any more.
 HIDDEN_OPTIONS = ('progressive_order', 'progressive_strict', 'fast_chests')
