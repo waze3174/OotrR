@@ -16,13 +16,21 @@ save has found:
   the boss key as icons;
 - the checks found, per region and in total, as `collected / trackable` (a check without a save flag can't be
   observed, so it isn't counted), and the enemy souls if the seed has them;
-- each region's checks by name, ticked when collected, so you can see what's still missing there;
+- each region's checks by name, ticked when collected, so you can see what's still missing there, with the highlighted
+  check's internal key (the randomizer's id for it) under the list;
+- **ticks by hand**: A on a check of a region's list ticks it as done, as a double click does in the desktop tracker; it
+  counts as found, and the ticks are kept on the SD card for each seed;
+- **show in the world**: Y on a check of a region's list marks where it is in the game, with a box and a beam over the
+  picture and how far it is, or names the map it's in;
 - the seed's id, a warning when the save isn't from this seed, and "Goal reached";
 - a **postcard**: a small card with only the icons (items, songs, temples, dungeon keys) in a corner of the screen while you play;
 - a **console** for Archipelago seeds: the items you receive and send, other players' items, hints, chat and the server's
   notices, as a few lines over the game, written there by OotrR's Archipelago client.
 
-Version 0.6.1. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
+The postcard and the console hide while the game is paused, so its menus are clear, and come back when it plays again. The panel
+works while the game is paused too.
+
+Version 0.7.0. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Controls
 
@@ -30,14 +38,57 @@ Version 0.6.1. 0.2.0's icons were seen in the game; the rest is **not yet tested
 |---|---|
 | R + right stick up | open the panel, or close it |
 | D-pad or left stick | move the highlight over the regions and the Settings entry after them; in a region's list, scroll (left and right: a page). Held, it repeats |
-| A | open the highlighted region's list of checks, the Settings page or the page of the entry chosen on it; on the console's page, tick or untick the kind of message chosen |
+| A | open the highlighted region's list of checks, the Settings page or the page of the entry chosen on it; in a region's list, tick the highlighted check by hand, or untick it (a check the save shows collected stays as it is); on the console's page, tick or untick the kind of message chosen |
+| Y | in a region's list, show the highlighted check in the world (Y on it again puts it away, Y on another check shows that one instead) |
 | B | back a page (a list and the Settings page: to the regions), or close the panel |
 | D-pad or left stick, on a settings page | up and down choose a setting, left and right change its value (on a kind of message, they or A tick or untick it) |
 
-While the panel is open the game doesn't see R, the right stick (so the camera stays still), A, B, the D-pad or the left
+While the panel is open the game doesn't see R, the right stick (so the camera stays still), A, B, Y, the D-pad or the left
 stick (Link stands still); while the combination is held, it doesn't see R or the right stick. A button still held when the
 panel closes stays hidden from the game until it's let go, so closing with B doesn't also swing the sword. R + right stick
 down is sloperinaGZ's menu and is left alone.
+
+## Show in the world
+
+In a region's list, two rows under the checks describe the highlighted one: its name with its internal key on the right
+(`key KokiriForest#1234567`, the id the randomizer gives the check, which stays the same whatever name it is shown with), then
+`Ticked by hand` if it is (below) and where it is: `Y: show in the world     12 m away, 3 m up`, `... In Kokiri Forest (child)`,
+or why it can't be shown.
+
+Y shows it. In the map the game is in, the check's place is drawn over the picture: a gold box a metre across round the
+check's actor (its position is the box's base) and a beam 30 m up from it, in sloperinaGZ's line style (a soft glow under
+each line). The lines are **not depth-tested**: they show through walls and the ground, so the check can be found from
+anywhere in the map. With the panel closed, a band at the top of the screen (at the bottom while the console is at the top)
+names the check and says how far it is from Link, how far up or down, and, when it is off the picture, which way to look
+(`turn left`, `look up`, `behind you`). In another map, the band says which map it is in (`In Deku Tree`, `... and 1 other map`
+when it is in several). The marker stays while you play, with the panel closed, until Y puts it away or another check is
+shown; it is hidden while the game is paused.
+
+Only the place is shown, never what the check holds: the seed's file has no items, only the vanilla scene data's positions.
+A check with no place in the game's maps (an NPC's gift, an event) says `No place in the world for this check`; a seed made
+before 0.7.0 says `This seed's file is too old to tick checks or show them: update its tracker with the game file` (OotrR's
+"Update the in-game tracker" with the game file, or `update-tracker --nup GAME.nup`).
+
+## Ticked by hand
+
+In a region's list, A ticks the highlighted check by hand and A again unticks it, as a double click (or Space) does in the
+randomizer's desktop tracker, which shows such a check as `Done (manual)`. A tick means done: the check counts as found in the
+region's and the panel's counts, as the desktop tracker counts its manual ticks. Its box is a green outline over a fainter green
+fill and its name a dimmer green, unlike a check the save shows collected (a filled green box), and the row under the list starts
+with `Ticked by hand`. A check the save shows collected stays collected: A does nothing on it. A `?` check (one the game has no flag
+for) can be ticked, and is then no longer counted as unreadable.
+
+The ticks are kept for each seed on the SD card, in `ootrTracker/marks-<seed id>.cfg` (in an emulator,
+`<user folder>/sdmc/ootrTracker/marks-<seed id>.cfg`), written when the list is left or the panel closed and read when the seed's
+file is loaded. The game can't write its RomFS, where `seed.trk` is, so the file sits next to the postcard's and the console's
+settings instead. The ticks are kept by the checks' ids, so updating the seed's tracker keeps them; a tick of an id the seed no
+longer has is dropped. The file is text: `ootrTracker marks 1`, `seed <id>`, a `check <id>` line per tick, then an `end` line with
+the count and a checksum. A save writes `marks-<seed id>.new` first, then the file, then deletes the copy, so a write cut off
+leaves the ticks as they were before it. A damaged file, or one of another seed or version, is left out (no ticks); the file is at
+most 32 KiB, and a tick that would make it larger is refused. A seed made before 0.7.0 has no ids, so nothing can be ticked.
+
+The in-game ticks and the desktop tracker's are kept apart: the desktop tracker doesn't read this file, and the Archipelago client
+sends the desktop tracker's manual ticks, not these.
 
 ## Settings
 
@@ -59,7 +110,8 @@ Left and right change the chosen setting at once, and while the settings are sho
 With the postcard on and the panel closed, the card is drawn in its corner every frame: the items' grid (with the stones and
 medallions) and the songs under it, over the dungeons' keys (medallion, small keys found out of the total, boss key), with the same
 icons and `?` marks as the panel and no text lists. It takes no input and the game keeps every button. The opacity is the whole card's, its box and its
-icons. At 1080p the card is about 340 pixels wide when small, 470 medium and 620 large.
+icons. At 1080p the card is about 340 pixels wide when small, 470 medium and 620 large. While the game is paused the card
+hides, and it comes back when the game plays again.
 
 The settings are saved on the SD card, in `ootrTracker/postcard.cfg` (in an emulator, `<user folder>/sdmc/ootrTracker/postcard.cfg`),
 when the settings are left or the panel is closed, and read when the seed's file is loaded at start. A missing or damaged file
@@ -87,7 +139,8 @@ The console shows the newest lines of the kinds ticked, oldest at the top, each 
 hints, white chat, grey notices, lavender other players' items: one player finding their own item, or sending one to a third); a
 long line wraps over up to three rows. A line fades out after the Fade time; Permanent keeps the last lines. It is drawn whether
 the panel is open or not, takes no input, and keeps clear of the postcard: next to it, narrower, or above or below it. While the
-console's page is shown it is drawn whole as a preview, under the panel ("No messages yet" before the first line).
+console's page is shown it is drawn whole as a preview, under the panel ("No messages yet" before the first line). While the
+game is paused the console hides, as the postcard does, and comes back when it plays again; its page's preview still shows.
 Console is kept apart for local and Archipelago seeds, so turning it on for one leaves the other's default.
 
 Its lines come from OotrR's Archipelago client (the desktop application or `ap-client`), which finds the console's mailbox in
@@ -159,6 +212,14 @@ GPL-3.0-or-later ([LICENSE](LICENSE)); this folder only, the rest of the reposit
   (`builds.c`, `gamedata.c`) is what sloperinaGZ's group found.
 - The items' grid and the key labels follow the desktop tracker of the randomizer (`src/oot_rando/tracker/` in this repository, MIT).
 - The console's kinds of message, a check box each, follow sloperinaGZ's watch list (`src/ootgz/menus.c`, master 5b44a21).
+- The game's pause, which hides the postcard and the console, is read as sloperinaGZ's `gd_game_paused` reads it
+  (`src/ootgz/gamedata.c`, commit 8a2c73c).
+- Show in the world is drawn the way sloperinaGZ draws its collision boxes (commit 8a2c73c): the camera's basis and
+  projection (`view.c` from its `src/ootgz/view.c`), the cutting of a line at the near plane and to the picture (its
+  `src/ootgz/airwall.c` `clip_near` and `clip_to_picture`), the soft line (`gpuui_line` and its profile, from its
+  `src/ootgz/gpuui.c`) with a glow under it (`src/ootgz/overlayui.c`), the camera's and Link's offsets (`worldmark.c` and
+  `builds.c`, from its `src/ootgz/link.c` and `src/ootgz/z64hd_builds.h`) and the String64 and pause reads (`gamedata.c`, from
+  its `src/ootgz/gamedata.c`).
 - `src/third_party` (see its README) holds [stb_truetype](https://github.com/nothings/stb) (public domain) and zstd's educational decoder
   (BSD or GPLv2, Meta Platforms), both as sloperinaGZ ships them.
 - No game files are included. You need your own copy of the game; the module reads its font and shader from it at run time,
