@@ -406,8 +406,11 @@ class Application:
         canvas.pack(side='left', fill='both', expand=True)
         def wheel(event):
             if str(event.widget).startswith(str(outer)):
-                canvas.yview_scroll(int(-event.delta / 120), 'units')
-        self.root.bind_all('<MouseWheel>', wheel, add='+')
+                units = theme.wheel_units(event.num, event.delta)
+                if units:
+                    canvas.yview_scroll(units, 'units')
+        for sequence in theme.WHEEL_EVENTS:
+            self.root.bind_all(sequence, wheel, add='+')
         return parent
 
     def card(self, parent, title=None, subtitle=None, fill='x', expand=False, side='top', padx=0):
