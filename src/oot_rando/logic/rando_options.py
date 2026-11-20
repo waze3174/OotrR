@@ -106,8 +106,7 @@ OPTIONS = [
            'Open: the gate and the Death Mountain part of the Fire Stone quest start as after the '
            'guard read Zelda\'s Letter. The castle visit and the Door of Time quest are unchanged. '
            'The letter has no use left: with the quest rewards shuffled it leaves the item pool and '
-           'Zelda gives a shuffled item instead. With Skip child Hyrule Castle on, the gate stays closed: '
-           'the letter is shuffled and the guard reads it. To be confirmed in game.', experimental=('open',)),
+           'Zelda gives a shuffled item instead. To be confirmed in game.', experimental=('open',)),
     Option('open_door_of_time', 'World', 'Door of Time open',
            ((False, OK), (True, OK)), False,
            'The Door of Time stands open and the sword can be pulled without the Spiritual Stones or '
@@ -422,9 +421,6 @@ def validate(values, supported_only=False):
             raise ValueError(f'Unknown value for {name}: {value!r}')
         if supported_only and not option.supported(value):
             raise ValueError(f'{option.label} = {value!r}: {option.reason(value)}')
-    if result['skip_child_zelda'] and result['open_kakariko'] == 'open':
-        # The castle skip shuffles Zelda's Letter for the gate guard: it takes the place of the open gate.
-        result['open_kakariko'] = 'closed'
     if supported_only:
         moved = result['shuffle_smallkeys'] not in ('vanilla', 'remove')
         if moved and result['key_rings'] == 'off':

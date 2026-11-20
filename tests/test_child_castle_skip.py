@@ -55,12 +55,6 @@ class CastleChecks(unittest.TestCase):
         self.assertTrue(cs.enabled({'skip_child_zelda': True}))
         self.assertFalse(cs.enabled(rando_options.defaults()))
 
-    def test_castle_skip_keeps_the_kakariko_gate_closed(self):
-        # The skip shuffles Zelda's Letter for the gate guard; it wins over the open gate.
-        values = rando_options.validate({'skip_child_zelda': True, 'open_kakariko': 'open'})
-        self.assertEqual(values['open_kakariko'], 'closed')
-        self.assertEqual(rando_options.validate({'open_kakariko': 'open'})['open_kakariko'], 'open')
-
 
 class CastleLogic(unittest.TestCase):
     @classmethod
