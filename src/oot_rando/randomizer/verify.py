@@ -193,6 +193,11 @@ def verify(nup_path, seed_dir):
         if not story_fixes.kakariko_burning_applied(out(GAMEDATA)):
             raise ValueError('Unexpected Kakariko burning condition in the game data.')
         report['story_fixes'] = report.get('story_fixes', 0) + 1
+    # Cuccos to bring back: the pen's logic module and her lines (the flow is also checked below).
+    from oot_rando.patching import cuccos
+    unpack = lambda path, raw: decompress(raw, d) if path.endswith('.zs') else raw
+    report.update(cuccos.check_seed(manifest, members, lambda path: unpack(path, nup.read(members[path])),
+                                    lambda path: unpack(path, (seed_dir / 'romfs' / path).read_bytes())))
     chest_flows = {}
     for record in chest_records:
         chest_flows.setdefault(record['flow'], []).append(record)
@@ -359,6 +364,9 @@ def verify(nup_path, seed_dir):
                         raise ValueError('Big Poe count differs from the settings.')
                     original = big_poes.patch_flow(original, skips['big_poes'])
                     report['big_poes'] = skips['big_poes']
+            if skips.get('cuccos'):
+                if path in {f'Event/EventFlow/{cuccos.FLOW}.bfevfl.zs', f'Event/EventFlow/{cuccos.FLOW}.110.bfevfl.zs'}:
+                    original = cuccos.patch_flow(original, skips['cuccos'])
             song_flows = skips.get('songs') or {}
             from oot_rando.patching.song_adapter import TEACHING_FLOW_PATH, add_teaching_entries
             if path == TEACHING_FLOW_PATH and any(ops.get('teaching') for ops in song_flows.values()):

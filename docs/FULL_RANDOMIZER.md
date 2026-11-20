@@ -112,6 +112,18 @@ the melody of the current `MelodyType`) and also adds it silently
 points held before a sale (100 per Big Poe): `Event70` against 100 × (N − 1)
 instead of 900, `Event265` lets those points through. **Not validated in game.**
 
+## Cuccos to bring back (`cuccos.py`)
+
+`chicken_count` (1 to 7): the cucco lady's pen in Kakariko (child). In
+`Logic/MiniGame_CatchCucco_c69b.logic.module.ainb` (patched in place), node 17 compares
+the cuccos in the pen with N − 1 instead of 7, and `Npc_Hylia_049_Child_Cucco06_IsInTheCage`
+(the flag her flows test before the reward) is set when more than N − 1 are in the pen
+instead of exactly 7; it is still cleared below N − 1, so N − 1 after having had N keeps
+it. In `Minigame_CatchCucco`, `Event3` (her "left to find" count, N minus the pen) and
+`Event82` (some brought back) use N. Her request and reward lines (`Talk_19`, `Talk_21`,
+`Talk_21_1`, `Talk_40` of `Npc_Hylia_049_Child.msbt`) name N, as a digit, in every
+language. 0 (a reward without a cucco) is not supported. **Not validated in game.**
+
 ## Item forms and derived actors (`item_forms.py`)
 
 The remake gives an item through three kinds of actors: `Item_*` (chest, event),
@@ -323,6 +335,8 @@ outside the maps are not covered (except chest events).
 15. **Child Death Mountain Crater**: child actors remain vanilla and are excluded
     from both shuffle candidates and logic. Adult copies remain eligible. Child
     bean planting is also out of logic, including for the adult volcano heart.
+16. **Cuccos**: with 3 to bring back, the cucco lady's request says 3, her "left to find"
+    count starts at 3, and she gives her reward once 3 are in the pen.
 
 Known limits: some NPCs decide "already given" from the vanilla item (e.g. silver
 scale for the diving game) and can give their new item again; shop texts of

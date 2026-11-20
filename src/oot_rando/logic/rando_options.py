@@ -329,8 +329,9 @@ OPTIONS = [
     Option('big_poe_count', 'Quality of life', 'Big Poes to bring back', None, 10,
            'The collector gives his reward after this many Big Poes. Not validated in game.',
            kind='int', minimum=1, maximum=10, supported_ints=tuple(range(1, 11)), experimental=tuple(range(1, 10))),
-    Option('chicken_count', 'Quality of life', 'Cuccos to bring back', None, 7, kind='int', minimum=0, maximum=7,
-           supported_ints=(7,)),
+    Option('chicken_count', 'Quality of life', 'Cuccos to bring back', None, 7,
+           'The cucco lady in Kakariko gives her reward after this many cuccos. Not validated in game.',
+           kind='int', minimum=0, maximum=7, supported_ints=tuple(range(1, 8)), experimental=tuple(range(1, 7))),
 ]
 BY_NAME = {option.name: option for option in OPTIONS}
 TABS = ('Logic', 'World', 'Goal', 'Items', 'Dungeons', 'Souls', 'Quality of life')
