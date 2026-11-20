@@ -117,6 +117,16 @@ class Converter(unittest.TestCase):
         self.assertNotIn('Kak Open Grotto Chest', conversion.names)
         self.assertEqual([row.current for row, _ in conversion.ambiguous], ['kak Open Grotto Chest'])
 
+    def test_loose_forms_match_the_scan_labels(self):
+        known = converter.KnownNames(['KF_gs_1 (child)', 'DC_room10_gs_1', 'Jabu_room14_gs_1',
+                                      'GV_gs_3 (child)', 'GV_gs_3 (adult)'])
+        self.assertEqual(known.resolve('KF gs 1'), ('fuzzy', 'KF_gs_1 (child)'))
+        self.assertEqual(known.resolve('DC room 10 gs 1'), ('fuzzy', 'DC_room10_gs_1'))
+        self.assertEqual(known.resolve('Jabu room 14 gs'), ('fuzzy', 'Jabu_room14_gs_1'))
+        self.assertEqual(converter.KnownNames(['HC crate 1']).resolve('HC crate1'), ('fuzzy', 'HC crate 1'))
+        # Both ages left out: two checks fit, neither is renamed.
+        self.assertEqual(known.resolve('GV gs 3'), ('ambiguous', ['GV_gs_3 (adult)', 'GV_gs_3 (child)']))
+
     def test_with_a_catalogue_unknown_names_are_unmatched(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'names.xlsx'
