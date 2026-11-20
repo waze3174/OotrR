@@ -217,6 +217,8 @@ def verify(nup_path, seed_dir):
     soul_actors, soul_expressions_seen = set(), set()
     from oot_rando.patching import special_item_shuffle
     master_flows = special_item_shuffle.flow_paths(manifest['settings']['full'], members)
+    from oot_rando.patching.story_fixes import escape_stones
+    stones = escape_stones(manifest['settings']['full'])
     if set(master_flows) - set(manifest['files']):
         raise ValueError('Missing Master Sword time travel flow.')
     if set(manifest.get('skips', {}).get('master_sword_flows', {})) != set(master_flows):
@@ -288,14 +290,14 @@ def verify(nup_path, seed_dir):
                 report['progressive_tokens'] = len(all_tokens)
             if path == ACTION_GUIDE_FLOW and 'zelda_escape_item_get' in (skips.get('story_fixes') or {}):
                 from oot_rando.patching.story_fixes import zelda_escape_on_item_get
-                original = zelda_escape_on_item_get(original)[0]
+                original = zelda_escape_on_item_get(original, stones)[0]
                 report['story_fixes'] = report.get('story_fixes', 0) + 1
             from oot_rando.patching.qol_patches import SWORD_CHEST_FLOW, skip_kokiri_sword_cutscene
             if path == SWORD_CHEST_FLOW and skips.get('sword_chest'):
                 original = skip_kokiri_sword_cutscene(original)[0]
                 report['comfort_flows'] = report.get('comfort_flows', 0) + 1
             from oot_rando.patching import story_fixes
-            for fixed_path, key, fix in story_fixes.FLOW_FIXES:
+            for fixed_path, key, fix in story_fixes.flow_fixes(stones):
                 if path == fixed_path and key in (skips.get('story_fixes') or {}):
                     original = fix(original)[0]
                     report['story_fixes'] = report.get('story_fixes', 0) + 1

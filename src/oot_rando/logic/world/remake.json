@@ -22,15 +22,15 @@
    "why": "Saria teaches her song during the Fire Stone quest (Challenge Get_StoneOfFire, step SariaMelodyGet), only after Darunia asked for music in his chamber (11/11: Kokiri Sword behind the Skull Kid). The quest reaches Death Mountain when the Kakariko guard reads Zelda's Letter (or with the gate open from the start), not on the letter held."
   },
   "HF Ocarina of Time Item": {
-   "rule": "is_child and Goron_Ruby and Zora_Sapphire and 'Met Zelda'",
-   "why": "Same escape as Song from Ocarina of Time: Zelda throws the Ocarina of Time into the moat."
+   "rule": "is_child and has_escape_stones and (spiritual_stones == 'all' or 'Met Zelda')",
+   "why": "Same escape as Song from Ocarina of Time: Zelda throws the Ocarina of Time into the moat. With every stone required (the default) the rule is the base one, which does not ask for Met Zelda."
   },
   "Song from Ocarina of Time": {
-   "rule": "is_child and Goron_Ruby and Zora_Sapphire and 'Met Zelda'",
-   "why": "Zelda's escape (Challenge DoorOfTime) needs Goto_HyruleCastle and Impa's send-off first. The game now starts it on the Goron Ruby and the Zora Sapphire held (patching/story_fixes.py), not only at the end of Dodongo's Cavern and Jabu-Jabu's Belly (15/11, Discord report). The native check (DoorOfTime_CheckStoneNum) reads only the Fire and Water stone quests, never the Kokiri Emerald."
+   "rule": "is_child and has_escape_stones and 'Met Zelda'",
+   "why": "Zelda's escape (Challenge DoorOfTime) needs Goto_HyruleCastle and Impa's send-off first. The game now starts it on the stones held (patching/story_fixes.py), not only at the end of Dodongo's Cavern and Jabu-Jabu's Belly (15/11, Discord report). The native check (DoorOfTime_CheckStoneNum) reads only the Fire and Water stone quests, never the Kokiri Emerald: with spiritual_stones = vanilla the escape asks for the Goron Ruby and the Zora Sapphire alone."
   },
   "Master Sword Pedestal": {
-   "rule": "open_door_of_time or (Goron_Ruby and Zora_Sapphire and 'Met Zelda')",
+   "rule": "open_door_of_time or (has_escape_stones and 'Met Zelda')",
    "why": "The Door of Time opens in the same DoorOfTime challenge, after Zelda's escape: the Song of Time alone (songs shuffled) does not open it. The door and the altar stones follow the challenge step (Logic/Market_Common_f252), not the stones held. With the door open from the start (patching/world_openings.py) the first pull needs neither."
   },
   "Gerudo Training Ground Heavy Block First Chest": {

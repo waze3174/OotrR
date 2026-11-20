@@ -108,6 +108,10 @@ OPTION_TIPS = {
     'open_door_of_time': 'The Door of Time is open from the start and the Master Sword can be pulled without the '
                          'Spiritual Stones or the Song of Time. Zelda\'s escape still gives the Ocarina of Time '
                          'and the Song of Time. To be confirmed in game.',
+    'spiritual_stones': 'The stones Zelda\'s escape asks for, and so the Ocarina of Time, the Song of Time and the '
+                        'Master Sword pedestal behind it. Require all: the Kokiri Emerald, the Goron Ruby and the '
+                        'Zora Sapphire. Vanilla: the Goron Ruby and the Zora Sapphire only, as in the original game '
+                        '(the game\'s own check, DoorOfTime_CheckStoneNum, only looks at those two).',
     'zora_fountain': 'Ruto\'s Letter required: King Zora blocks the way to Zora\'s Fountain until he reads the '
                      'letter, as in the vanilla game. Always moved: he stands aside from the start and stays '
                      'there; the letter can no longer be delivered, so it never becomes a bottle. '
@@ -175,7 +179,7 @@ OPTION_TIPS = {
 # A visible option missing here is shown at the end, in a card named after its tab.
 SETTING_GROUPS = (
     ('Open world', 'Zones and quests open from the start.',
-     ['game:open_forest', 'open_kakariko', 'open_door_of_time', 'zora_fountain', 'gerudo_fortress',
+     ['game:open_forest', 'open_kakariko', 'open_door_of_time', 'spiritual_stones', 'zora_fountain', 'gerudo_fortress',
       'open_gerudo_valley_bridge', 'skip_child_zelda']),
     ('Logic and accessibility', '',
      ['accessibility', 'logic_no_night_tokens_without_suns_song', 'game:skulltulas_always_present']),

@@ -219,7 +219,8 @@ the dialogue box stayed empty and blocked the game. A new save is required.
   (`*_Adult_*`) is collected at that age: each of its AP locations that this age can
   ever reach must be reachable **at that age** (`Child|`/`Adult|` members, the AP
   `is_child`/`is_adult` rules). Being adult needs `Time Travel` (Door of Time: Song
-  of Time, which the child gets for the Goron Ruby and the Zora Sapphire). A source with no
+  of Time, which the child gets for the stones Zelda's escape asks for, see
+  *Spiritual Stones for Zelda's escape*). A source with no
   such location only receives filler. Its tracker name ends in `(child)`/`(adult)`;
   an object on both maps under one hash is one check for either age.
 - NPCs: exact AP location; for the man on the roof (adult only in the remake) and
@@ -249,6 +250,28 @@ Mido, outside the grotto) use `KF Links House Pot`, at the age of their maps (ch
 copies at start, adult-only copies once the adult reaches the forest); bean platform
 rupees use `KF Bean Platform Red Rupee`.
 Mido's house: the 4 grouped chests are matched to Mido's 4 AP chests.
+
+### Spiritual Stones for Zelda's escape (`spiritual_stones`)
+
+The game's own check (`DoorOfTime/DoorOfTime_CheckStoneNum`) reads only the Fire and
+Water stone quests (`Get_StoneOfFire`, `Get_StoneOfWater`), never the Kokiri Emerald.
+The option, in the *Open world* card, picks what Zelda's escape asks for, and so what
+gates the Ocarina of Time (`HF Ocarina of Time Item`), the Song of Time and the Master
+Sword pedestal:
+
+| Value | Stones | Logic and patch |
+|---|---|---|
+| `all` (default, "Require all") | Kokiri Emerald, Goron Ruby, Zora Sapphire | the rules of the base world (`has_all_stones`); `story_fixes.STONE_SETS['all']` checks the three saved `IsGet.Item_Stone_*` flags |
+| `vanilla` ("Vanilla") | Goron Ruby, Zora Sapphire | `has_escape_stones` without the emerald, and `Met Zelda` for the ocarina item too; `STONE_SETS['vanilla']` checks the two |
+
+The rules use the helper `has_escape_stones` (`logic/world/helpers.json`), which folds
+the option when the logic is compiled: there is one copy of `remake.json`, not two. The
+Mask of Truth (`has_all_stones`) is not affected.
+
+Seed identity: an option at the default value is left out of the stored settings
+(`rando_options.UNRECORDED`, `Settings.to_dict`), so seeds made before the option, whose
+settings never held it, keep their identity and regenerate identically; `vanilla` is
+stored. The seed string already writes only the values that differ from the defaults.
 
 ## Mechanism cutscenes are never skippable
 
@@ -313,8 +336,9 @@ outside the maps are not covered (except chest events).
     and Lullaby (found elsewhere, the lullaby possibly as a harp in a chest); with the forest closed, the Kokiri guard and Mido still wait for the Deku
     Tree; Saria teaches her song in the meadow; the Kakariko gate opens with the letter;
     Talon and Malon are at Lon Lon Ranch (Epona's Song, the cucco game); Kaepora's first
-    field talk does not move the castle quest back; with the Goron Ruby and the Zora
-    Sapphire, Zelda flees and the Door of Time opens.
+    field talk does not move the castle quest back; with the stones the option asks
+    for (all three, or the Goron Ruby and the Zora Sapphire), Zelda flees and the Door
+    of Time opens.
 14. **Pickup visuals**: progressive slingshot, bow and hookshot copies use their
     native item poses. Gold Skulltula drops no longer use the skull-shaped aura.
     Items without an effect borrow the moat ocarina glow; check visibility under
