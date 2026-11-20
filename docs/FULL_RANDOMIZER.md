@@ -146,6 +146,14 @@ clone of the `DropItem` AI: when it spawns, it reads its check flag and deletes 
 once the check is collected. A collected source therefore drops nothing afterwards
 (not its vanilla rupee or heart).
 
+When the check is collected depends on the reward. A key reward plays its get event
+on every pickup, and that event's graph sets the check flag once the item is in the
+pouch. A minor reward (rupees, ammunition, recovery hearts, magic jars) keeps the
+native pick-up, without Link stopping: the game plays its get event only the first
+time an item of that kind is ever got, so that graph cannot record the check. Its drop
+AI sets the check flag as soon as the pickup spawns, right after the "already
+collected" test. A minor drop that is never picked up still counts as collected.
+
 ## Dungeon-specific keys (`key_adapter.py`)
 
 Remake keys are generic: `Item_Dungeon_SmallKey`/`BossKey` are credited by native

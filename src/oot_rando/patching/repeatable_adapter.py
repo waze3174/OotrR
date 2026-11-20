@@ -5,7 +5,10 @@ sets a saved check flag only after the native add-to-pouch action. The source
 itself is left as in the game, but for its drop, so it breaks and respawns like
 the vanilla one (on a scene change). Once the check is collected, the pickup it
 drops deletes itself when it spawns: its own AI (a clone of the native
-``DropItem`` one) checks the flag. Gameplay validation remains required.
+``DropItem`` one) checks the flag. A minor reward (rupees, ammunition, hearts)
+keeps the native short pick-up, which runs no get event once an item of its kind
+was ever got: its drop AI sets the check flag when it spawns instead. Gameplay
+validation remains required.
 
 Shop shelves holding a shuffled item (``Shop_Rando_*``) are bought once the same
 way: each gets its own actor whose shop AI writes the check flag when the item is
@@ -67,9 +70,9 @@ def pickup_pouch_settings(canonical):
     kind of item is ever got (a green rupee from every pot showed "You got a Green
     Rupee!", Discord 17/11), the short pick-up display after. The derived drop
     inherits PlayGetEventManyTimes from the world pickups (item_forms.WORLD_POUCH_FLAGS):
-    it is turned off explicitly. Whether the check flag is still written on the short
-    pick-up (its event AINB) is not validated in game: if not, the pot keeps dropping
-    that minor item.
+    it is turned off explicitly. The short pick-up runs no get event, so its event
+    graph never writes the check flag: the drop AI writes it when the pickup spawns
+    (:func:`instrument_drop_ai`, ``mark_on_spawn``).
     """
     settings = {'PlayGetEventManyTimes': not is_minor_reward(canonical), 'IsAutoSaveAfterPlayGet': True}
     if get_type(canonical) is not None:
@@ -81,13 +84,15 @@ def _guid(text):
     return str(uuid.uuid5(uuid.NAMESPACE_URL, 'oot-randomizer/' + text))
 
 
-def instrument_pickup_event(raw, flag, filename, canonical=None, also_set=()):
+def instrument_pickup_event(raw, flag, filename, canonical=None, also_set=(), skip_if_collected=True):
     """Clone an event AI and sequence a GameData write AFTER native pouch push.
 
     All commands and original nodes are retained. No setter is attached to actor
     death, jar destruction, event entry, animation completion or item possession.
     ``also_set`` lists further saved Bool flags written after ``flag`` (a soul
-    picked from a pot also sets its ``IsGet.Item_Soul_*`` flag).
+    picked from a pot also sets its ``IsGet.Item_Soul_*`` flag). With
+    ``skip_if_collected`` the push is skipped once ``flag`` is set; a pickup whose
+    drop sets ``flag`` when it spawns (minor rewards) must not skip it.
     """
     try:
         import ainb
@@ -123,23 +128,13 @@ def instrument_pickup_event(raw, flag, filename, canonical=None, also_set=()):
     for prop in sequential.get('Properties', {}).get('Bool', []):
         if prop['Name'] == 'IsLoop':
             prop['Default Value'] = False
-    def default(name, value):
-        return {'Name': name, 'Default Value': value, 'Node Index': -1,
-                'Output Index': 0, 'Flags': ['Uses Default']}
-    setter = {'Node Type': 'UserDefined', 'Node Index': setter_index,
-              'Name': 'OneShotSetNonStructGameDataBool', 'GUID': _guid(flag + '/setter'),
-              'Flags': [], 'Queries': [], 'Attachments': [],
-              'Properties': {'Bool': [{'Name': 'ExecuteEveryFrame', 'Default Value': False, 'Flags': []}]},
-              'Parameters': {'Inputs': {'Int': [default('GameDataIndex', -1)],
-                                        'Bool': [default('Value', True)],
-                                        'String': [default('GameDataFullName', flag)]}, 'Outputs': {}},
-              'XLink Actions': [], 'Plugs': {}}
+    setter = _flag_setter(setter_index, flag, _guid(flag + '/setter'))
     document['Filename'] = filename
     nodes.extend([sequential, setter])
     if canonical:
         query = copy.deepcopy(next(n for n in nodes[:sequence_index] if n['Name'] == 'QueryPouchMgrIsEnablePushToPouch'))
         query.update({'Node Index': query_index, 'GUID': _guid(flag + '/can-add'), 'Queries': [], 'Plugs': {}})
-        query['Parameters']['Inputs'] = {'String': [default('ActorName', canonical)]}
+        query['Parameters']['Inputs'] = {'String': [_default('ActorName', canonical)]}
         selector = copy.deepcopy(next(n for n in nodes[:sequence_index] if n['Node Type'] == 'Element_BoolSelector'))
         noop = next(n['Node Index'] for n in nodes[:sequence_index] if n['Name'] == 'OneshotDoNothing')
         selector.update({'Node Index': selector_index, 'GUID': _guid(flag + '/guard'), 'Queries': [query_index],
@@ -149,33 +144,35 @@ def instrument_pickup_event(raw, flag, filename, canonical=None, also_set=()):
         selector['Plugs'] = {'Generic': [{'Node Index': query_index, 'Name': 'Input', 'Unknown 1': 0, 'Unknown 2': 0}],
                              'Child': [{'Node Index': sequence_index, 'Name': 'True'}, {'Node Index': noop, 'Name': 'False'}]}
         nodes.extend([query, selector])
-    # A drop may already exist when another copy of the same location is
-    # collected. Recheck the saved per-check flag at native pickup execution,
-    # rather than relying only on the source actor's Presence condition.
-    flag_query_index, flag_selector_index = len(nodes), len(nodes) + 1
-    flag_query = copy.deepcopy(next(n for n in nodes[:sequence_index]
-                                   if n['Name'] == 'QueryGetNonStructGameDataBool'))
-    flag_query.update({'Node Index': flag_query_index, 'GUID': _guid(flag + '/already-collected'),
-                       'Queries': [], 'Plugs': {}})
-    flag_query['Parameters']['Inputs']['String'] = [default('GameDataFullName', flag)]
-    flag_selector = copy.deepcopy(next(n for n in nodes[:sequence_index]
-                                      if n['Node Type'] == 'Element_BoolSelector'))
-    noop = next(n['Node Index'] for n in nodes[:sequence_index] if n['Name'] == 'OneshotDoNothing')
-    eligible = selector_index if canonical else sequence_index
-    flag_selector.update({'Node Index': flag_selector_index, 'GUID': _guid(flag + '/first-only'),
-                          'Queries': [flag_query_index], 'Attachments': [], 'Flags': [], 'XLink Actions': []})
-    flag_selector['Parameters'] = {'Inputs': {'Bool': [{'Name': 'Input', 'Default Value': False,
-                                      'Node Index': flag_query_index, 'Output Index': 0, 'Flags': []}]}, 'Outputs': {}}
-    flag_selector['Plugs'] = {
-        'Generic': [{'Node Index': flag_query_index, 'Name': 'Input', 'Unknown 1': 0, 'Unknown 2': 0}],
-        'Child': [{'Node Index': noop, 'Name': 'True'}, {'Node Index': eligible, 'Name': 'False'}]}
-    for _, plug in parents:
-        plug['Node Index'] = flag_selector_index
-    nodes.extend([flag_query, flag_selector])
+    if skip_if_collected:
+        # A drop may already exist when another copy of the same location is
+        # collected. Recheck the saved per-check flag at native pickup execution,
+        # rather than relying only on the source actor's Presence condition.
+        flag_query_index, flag_selector_index = len(nodes), len(nodes) + 1
+        flag_query = copy.deepcopy(next(n for n in nodes[:sequence_index]
+                                       if n['Name'] == 'QueryGetNonStructGameDataBool'))
+        flag_query.update({'Node Index': flag_query_index, 'GUID': _guid(flag + '/already-collected'),
+                           'Queries': [], 'Plugs': {}})
+        flag_query['Parameters']['Inputs']['String'] = [_default('GameDataFullName', flag)]
+        flag_selector = copy.deepcopy(next(n for n in nodes[:sequence_index]
+                                          if n['Node Type'] == 'Element_BoolSelector'))
+        noop = next(n['Node Index'] for n in nodes[:sequence_index] if n['Name'] == 'OneshotDoNothing')
+        eligible = selector_index if canonical else sequence_index
+        flag_selector.update({'Node Index': flag_selector_index, 'GUID': _guid(flag + '/first-only'),
+                              'Queries': [flag_query_index], 'Attachments': [], 'Flags': [], 'XLink Actions': []})
+        flag_selector['Parameters'] = {'Inputs': {'Bool': [{'Name': 'Input', 'Default Value': False,
+                                          'Node Index': flag_query_index, 'Output Index': 0, 'Flags': []}]},
+                                       'Outputs': {}}
+        flag_selector['Plugs'] = {
+            'Generic': [{'Node Index': flag_query_index, 'Name': 'Input', 'Unknown 1': 0, 'Unknown 2': 0}],
+            'Child': [{'Node Index': noop, 'Name': 'True'}, {'Node Index': eligible, 'Name': 'False'}]}
+        for _, plug in parents:
+            plug['Node Index'] = flag_selector_index
+        nodes.extend([flag_query, flag_selector])
     for extra in also_set:
         extra_setter = copy.deepcopy(setter)
         extra_setter.update({'Node Index': len(nodes), 'GUID': _guid(flag + '/also/' + extra)})
-        extra_setter['Parameters']['Inputs']['String'] = [default('GameDataFullName', extra)]
+        extra_setter['Parameters']['Inputs']['String'] = [_default('GameDataFullName', extra)]
         sequential['Plugs']['Child'].append({'Node Index': len(nodes), 'Name': ''})
         nodes.append(extra_setter)
     result = ainb.AINB.from_dict(document).to_binary()
@@ -191,6 +188,18 @@ def instrument_pickup_event(raw, flag, filename, canonical=None, also_set=()):
 
 def _default(name, value):
     return {'Name': name, 'Default Value': value, 'Node Index': -1, 'Output Index': 0, 'Flags': ['Uses Default']}
+
+
+def _flag_setter(index, flag, guid):
+    """``OneShotSetNonStructGameDataBool`` node at ``index`` setting the saved Bool ``flag``."""
+    return {'Node Type': 'UserDefined', 'Node Index': index,
+            'Name': 'OneShotSetNonStructGameDataBool', 'GUID': guid,
+            'Flags': [], 'Queries': [], 'Attachments': [],
+            'Properties': {'Bool': [{'Name': 'ExecuteEveryFrame', 'Default Value': False, 'Flags': []}]},
+            'Parameters': {'Inputs': {'Int': [_default('GameDataIndex', -1)],
+                                      'Bool': [_default('Value', True)],
+                                      'String': [_default('GameDataFullName', flag)]}, 'Outputs': {}},
+            'XLink Actions': [], 'Plugs': {}}
 
 
 def _retarget(value, old, new):
@@ -278,14 +287,7 @@ def instrument_shop_ai(raw, flag, filename):
         raise ValueError('Shop item AI: get demo ambiguous or missing.')
     parents = [parent_of(demo[0]), parent_of(put)]
     setter_index, query_index = len(nodes), len(nodes) + 1
-    setter = {'Node Type': 'UserDefined', 'Node Index': setter_index,
-              'Name': 'OneShotSetNonStructGameDataBool', 'GUID': _guid(flag + '/bought'),
-              'Flags': [], 'Queries': [], 'Attachments': [],
-              'Properties': {'Bool': [{'Name': 'ExecuteEveryFrame', 'Default Value': False, 'Flags': []}]},
-              'Parameters': {'Inputs': {'Int': [_default('GameDataIndex', -1)],
-                                        'Bool': [_default('Value', True)],
-                                        'String': [_default('GameDataFullName', flag)]}, 'Outputs': {}},
-              'XLink Actions': [], 'Plugs': {}}
+    setter = _flag_setter(setter_index, flag, _guid(flag + '/bought'))
     readers = [n for n in nodes if n['Node Index'] != sold_out
                and (sold_out in n.get('Queries', []) or _refers(n.get('Parameters'), sold_out))]
     if not readers:
@@ -342,7 +344,7 @@ def instrument_shop_ai(raw, flag, filename):
     return binary
 
 
-def instrument_drop_ai(raw, flag, filename, event_raw):
+def instrument_drop_ai(raw, flag, filename, event_raw, mark_on_spawn=False):
     """Clone the native drop AI so that a pickup spawned after its check deletes itself.
 
     The start-up sequence of the root (one frame of nothing, then the rotation AS)
@@ -351,6 +353,10 @@ def instrument_drop_ai(raw, flag, filename, event_raw):
     sequence runs once, at spawn: the first pickup is never deleted while its own
     get event writes the flag. The query and deletion are copies of the native nodes
     of the get event graph ``event_raw``.
+
+    ``mark_on_spawn``: the sequence then sets ``flag`` right after that check, so the
+    check is collected when its pickup drops. For minor rewards, whose short pick-up
+    runs no get event that could write it.
     """
     try:
         import ainb
@@ -409,6 +415,10 @@ def instrument_drop_ai(raw, flag, filename, event_raw):
                                    {'Node Index': noop_index, 'Name': 'False'}]}
     starts[0]['Plugs']['Child'].insert(0, {'Node Index': selector_index, 'Name': ''})
     nodes.extend([query, delete, noop, selector])
+    if mark_on_spawn:
+        setter_index = len(nodes)
+        nodes.append(_flag_setter(setter_index, flag, _guid(flag + '/drop-mark')))
+        starts[0]['Plugs']['Child'].insert(1, {'Node Index': setter_index, 'Name': ''})
     document['Filename'] = filename
     binary = build(document)
     result = ainb.AINB.from_binary(binary).as_dict()
@@ -531,14 +541,18 @@ def build_repeatable_packs(records, read_pack, read_raw, tables):
             'EventUniqueAin': 'Work/AI/Root/Event/' + event_name + '.ain'}})
         components['EventPerformerRef'] = '?' + event_param
         also = (SOUL_FLAG_PREFIX + record['canonical'],) if record['canonical'].startswith('Item_Soul_') else ()
-        files[event_member] = instrument_pickup_event(event, record['flag'], event_name, record['canonical'], also)
+        # A minor reward's check is collected when it drops (its short pick-up runs no
+        # get event); a key reward's once its get event put it in the pouch.
+        minor = is_minor_reward(record['canonical'])
+        files[event_member] = instrument_pickup_event(event, record['flag'], event_name, record['canonical'], also,
+                                                      skip_if_collected=not minor)
         # A respawned source drops nothing more once the check is collected.
         behaviour = resolve_components({**files, old_path: byml_codec.dump(document)}, standard, byml_codec)
         if behaviour.get('AIInfoRef') != DROP_AI_INFO:
             raise ValueError('First-collection pickup without the native drop AI: ' + record['actor'])
         root = record['actor'] + '.root'
         ai_info = f'AI/AIInfo/{record["actor"]}.engine__actor__AIInfo.bgyml'
-        files['AI/' + root + '.ainb'] = instrument_drop_ai(drop_ai, record['flag'], root, event)
+        files['AI/' + root + '.ainb'] = instrument_drop_ai(drop_ai, record['flag'], root, event, mark_on_spawn=minor)
         files[ai_info] = byml_codec.dump({'endian': '<', 'version': 7,
                                           'root': {'RootAIRef': 'Work/AI/Root/' + root + '.ain'}})
         components['AIInfoRef'] = '?' + ai_info

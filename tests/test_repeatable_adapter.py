@@ -259,6 +259,19 @@ class LocalGraphTests(unittest.TestCase):
             incoming = [p['Node Index'] for n in guarded['Nodes'][:len(before['Nodes'])]
                         for p in n.get('Plugs', {}).get('Child', []) if p['Node Index'] == original_push]
             self.assertEqual(incoming, [])
+            # A minor reward's drop sets the flag when it spawns: its get event (the first
+            # one of its kind ever) must still put the item in the pouch.
+            unguarded = instrument_pickup_event(raw, 'Rando.Check.test', 'RandoOnce_test.event.root',
+                                                'TBox_Rupee_Red', skip_if_collected=False)
+            minor = ainb.AINB.from_binary(unguarded).as_dict()
+            self.assertEqual(minor['Commands'], before['Commands'])
+            sequence, saved, can_add, selector = minor['Nodes'][len(before['Nodes']):]
+            self.assertEqual((can_add['Name'], saved['Name']),
+                             ('QueryPouchMgrIsEnablePushToPouch', 'OneShotSetNonStructGameDataBool'))
+            self.assertEqual(_flag_nodes(unguarded, 'QueryGetNonStructGameDataBool', 'Rando.Check.test'), [])
+            push_parents = {n['Node Index'] for n in minor['Nodes'][:len(before['Nodes'])]
+                            for p in n.get('Plugs', {}).get('Child', []) if p['Node Index'] == selector['Node Index']}
+            self.assertTrue(push_parents)
 
         finally:
             nup.stream.close()
@@ -319,6 +332,15 @@ class LocalGraphTests(unittest.TestCase):
                 info = byml_codec.load(files[components['AIInfoRef'][1:]])['root']
                 self.assertEqual(info['RootAIRef'], f'Work/AI/Root/{actor}.root.ain')
                 self.assertIn(f'AI/{actor}.root.ainb', files)
+                # Who records the check: the drop when it spawns (minor reward, no get
+                # event after the first of its kind), else the get event after the push.
+                minor = is_minor_reward(record['canonical'])
+                drop_setters = _flag_nodes(files[f'AI/{actor}.root.ainb'], 'OneShotSetNonStructGameDataBool',
+                                           record['flag'])
+                self.assertEqual(len(drop_setters), 1 if minor else 0)
+                event_guards = _flag_nodes(files[f'AI/{record["event_filename"]}.ainb'],
+                                           'QueryGetNonStructGameDataBool', record['flag'])
+                self.assertEqual(len(event_guards), 0 if minor else 1)
 
     def test_respawned_drop_deletes_itself_once_collected(self):
         import ainb
@@ -359,6 +381,49 @@ class LocalGraphTests(unittest.TestCase):
         self.assertEqual(delete['Name'], 'OneShotGenericDeleteThisActor')
         self.assertIs({p['Name']: p['Default Value'] for p in delete['Properties']['Bool']}['IsFade'], False)
         self.assertEqual(keep['Name'], 'OneshotDoNothing')
+
+    def test_minor_drop_marks_its_check_on_spawn(self):
+        """A minor reward's short pick-up runs no get event: its drop sets the check flag
+        when it spawns, after the test that deletes an already collected one."""
+        import ainb
+        from oot_rando.formats.inspect_nup import Nup
+        from oot_rando.formats.inspect_resources import dictionaries
+        from oot_rando.game.world_maps import effective_members
+        from oot_rando.patching.repeatable_adapter import (DROP_AI_MEMBER, EVENT_MEMBER, EVENT_PACK,
+                                                           instrument_drop_ai)
+        nup = Nup(os.environ['OOT_NUP'])
+        try:
+            dic, members = dictionaries(nup), effective_members(nup)
+            pack = sarc(decompress(nup.read(members[EVENT_PACK]), dic))
+        finally:
+            nup.stream.close()
+        raw = pack[DROP_AI_MEMBER]
+        before = ainb.AINB.from_binary(raw).as_dict()
+        after = ainb.AINB.from_binary(instrument_drop_ai(raw, 'Rando.Check.test', 'Obj_RandoOnce_test.root',
+                                                         pack[EVENT_MEMBER], mark_on_spawn=True)).as_dict()
+        self.assertEqual(before['Commands'], after['Commands'])
+        count = len(before['Nodes'])
+        query, delete, keep, selector, setter = after['Nodes'][count:]
+        changed = [i for i in range(count) if before['Nodes'][i] != after['Nodes'][i]]
+        self.assertEqual(len(changed), 1)
+        start = after['Nodes'][changed[0]]
+        self.assertEqual([p['Node Index'] for p in start['Plugs']['Child'][:2]],
+                         [selector['Node Index'], setter['Node Index']])
+        self.assertEqual(start['Plugs']['Child'][2:], before['Nodes'][changed[0]]['Plugs']['Child'])
+        self.assertEqual(setter['Name'], 'OneShotSetNonStructGameDataBool')
+        inputs = setter['Parameters']['Inputs']
+        self.assertEqual((inputs['String'][0]['Default Value'], inputs['Bool'][0]['Default Value']),
+                         ('Rando.Check.test', True))
+        # The test before it reads the flag once, on entering: setting it does not
+        # delete the pickup that has just spawned.
+        self.assertIs({p['Name']: p['Default Value'] for p in query['Properties']['Bool']}['OutputOnlyOnEnter'], True)
+
+
+def _flag_nodes(raw, name, flag):
+    """Nodes called ``name`` of an AINB whose GameData name is ``flag``."""
+    import ainb
+    return [n for n in ainb.AINB.from_binary(raw).as_dict()['Nodes'] if n['Name'] == name
+            and any(p['Default Value'] == flag for p in n.get('Parameters', {}).get('Inputs', {}).get('String', []))]
 
 
 if __name__ == '__main__':
