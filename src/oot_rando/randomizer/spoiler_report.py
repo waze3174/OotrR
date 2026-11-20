@@ -5,6 +5,7 @@ Built only from the seed's own spoiler.json and checks.json, never from the game
 import json
 from pathlib import Path
 
+from oot_rando.game.check_name_overrides import display_name
 from oot_rando.game.remake_world import actor_item, zone_label
 from oot_rando.game.tracking_metadata import reward_label
 
@@ -110,7 +111,7 @@ def load_report(directory, extra_roots=()):
             item = item_label(placement['item'], placement.get('reward_actor') or placement.get('actor'))
             source = placement.get('source', '')
         aps = placement.get('ap_locations') or []
-        name = check.get('name') or placement.get('location') or ident
+        name = display_name(check.get('name') or placement.get('location') or ident)
         if placement.get('location'):
             renamed[placement['location']] = name
         rows.append({'id': ident, 'region': region, 'zone': zone, 'location': name,
