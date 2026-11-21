@@ -215,6 +215,17 @@ With a seed whose `icons.bin` has the token's icon (51 icons: made by this versi
 - In the log, `the icons are in` shows 51 icons. With an older `icons.bin` (50 icons) the icon is replaced by `GS` and everything else is as before.
 - Before the game's save data is attached the count is `?/100`.
 
+## 3k. The bottle count (0.7.2)
+
+With a seed made or updated (`update-tracker`) by this version:
+
+- The Bottle cell shows the number of bottles the save holds, 1 to 5, in the corner as a bomb bag's level shows; a save with none shows the
+  cell dim and with no number. Get a second bottle: it goes to 2 within half a second. Compare with the item screen's bottles.
+- The postcard shows the same number.
+- A seed file made before this version (one `IsGet.Item_Bottle` rule) shows `1` once that flag is set, whatever the number of bottles,
+  until `update-tracker`.
+- A module older than 0.7.2 reading a new seed file shows the Bottle owned, with no number: its grid has one level for the Bottle.
+
 ## 4. What it shows
 
 Pick up things and compare with the desktop tracker (Real time mode) on the same save:
