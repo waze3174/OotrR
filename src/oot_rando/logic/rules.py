@@ -23,6 +23,7 @@ MEDALLIONS = ('Forest Medallion', 'Fire Medallion', 'Water Medallion', 'Shadow M
 AP_VANILLA_SETTINGS = {
     'logic_rules': 'glitchless', 'open_forest': 'closed', 'open_kakariko': 'closed',
     'open_door_of_time': False, 'spiritual_stones': rando_options.UNRECORDED['spiritual_stones'], 'zora_fountain': 'closed', 'gerudo_fortress': 'normal',
+    'door_of_time_requirement': rando_options.UNRECORDED['door_of_time_requirement'],
     'open_gerudo_valley_bridge': False,
     'bridge': 'vanilla', 'bridge_stones': 3, 'bridge_medallions': 6, 'bridge_rewards': 9,
     'bridge_tokens': 100, 'bridge_hearts': 20, 'trials': 6,
@@ -236,6 +237,10 @@ class Logic:
             compiled = {'exits': [], 'locations': [], 'events': []}
             for target, rule in region.get('exits', {}).items():
                 rule = REMAKE_EXIT_RULES.get(f'{name} -> {target}', rule)
+                if (name, target) == ('Temple of Time', 'Beyond Door of Time'):
+                    stones = {'all': 'has_all_stones', 'vanilla': 'Goron_Ruby and Zora_Sapphire',
+                              'song': 'True'}[self.settings['door_of_time_requirement']]
+                    rule = f'open_door_of_time or (can_play(Song_of_Time) and ({stones}))'
                 requirement = extra_exit_requirements.get((name, target))
                 compiled['exits'].append((target, self.compile(rule, requirement)))
             own = {l: r for l, r in region.get('locations', {}).items()

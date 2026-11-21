@@ -17,7 +17,7 @@ class WorldTests(unittest.TestCase):
     def setUpClass(cls):
         cls.world = World()
 
-    def test_the_fingerprint_is_that_of_0_7_3_ours(self):
+    def test_the_fingerprint_is_that_of_upstream_0_7_3(self):
         # Installed seeds keep it (tracker accessibility) and Archipelago patches compare it: it hashes the
         # logic files, so the options that vary the rules (spiritual_stones) do it in Python, not in them.
         # Change this value on purpose only, when the logic files change.

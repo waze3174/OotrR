@@ -1361,6 +1361,11 @@ SAGE_OF_WATER_STEPS = ('Ready', 'Step00', 'Step01', 'Step03', 'Step04', 'Step05'
 SERENADE_STEPS = ('Step04', 'Step05')
 DOOR_MODULE = 'Logic/Market_Common_f252.logic.module.ainb'
 DOOR_OPENED = 'Market_Child_TimeTempleDoor_Opened'
+# The altar's ReplaceEventParam rejects the ocarina BEFORE DoorOfTime_OpenDoor
+# runs when this expression is true. Vanilla requires the quest to equal Step05;
+# bypassing Event60 in that flow alone therefore did not free the song (0.7.3).
+DOOR_SONG_INVALID = 'Market_Child_TimeTempleDoor_OcarinaReacts'
+DOOR_SONG_NATIVE = [[1, 931730378], [2, 1558058783], [5], [0, 1920740541], [4]]
 DOOR_SONG_STEP = 'DoorOfTime_IsAfter_Step04_Exp'
 DOOR_SONG_PREFIX = 'RandoDoorSongStep06_'
 DOOR_COMPLETE_ONLY_AFTER = 'DoorOfTime_IsAfter_Step05_Exp'
@@ -1374,6 +1379,57 @@ ALL_SAGE_FLOW = 'Event/EventFlow/AllSage.bfevfl.zs'
 DEFEAT_GANON_STEPS = ('Ready', 'Step01', 'Step02', 'Step03', 'Step04', 'Step05', 'Step06', 'Step07',
                       'Step08', 'Step09')
 GANON_PAST_REVELATION = 'Defeat_Ganon_IsAfter_Step01_Exp'
+
+
+def _door_song_program(requirement):
+    """The native ocarina invalid-condition: already opened OR missing stones.
+
+    The ocarina point itself recognises the Song of Time; this gate only adds
+    the chosen stones, independently of Zelda's escape and its quest enum.
+    """
+    from oot_rando.patching.soul_adapter import murmur3
+    if requirement not in ('song', 'vanilla', 'all'):
+        raise ValueError('Unknown Door of Time requirement: ' + str(requirement))
+    program = [[0, murmur3(DOOR_OPENED)]]
+    if requirement != 'song':
+        stones = STONE_SETS[requirement]
+        program.append([0, murmur3(STONE_FLAG_PREFIX + stones[0])])
+        for stone in stones[1:]:
+            program.extend([[0, murmur3(STONE_FLAG_PREFIX + stone)], [3]])
+        program.extend([[5], [4]])
+    return program
+
+
+def door_song_condition(gamedata_raw, requirement='song'):
+    """Free the native altar reaction from Step05 and apply the door's stones.
+
+    Returns (GameData bytes, report). Does not alter the separate escape rules.
+    """
+    from oot_rando.formats import byml_codec
+    from oot_rando.patching.soul_adapter import murmur3
+    program = _door_song_program(requirement)
+    document = byml_codec.load(gamedata_raw)
+    data = document['root']['Data']
+    entries = [e for e in data['BoolExp'] if int(e['Hash']) == murmur3(DOOR_SONG_INVALID)]
+    if len(entries) != 1 or [[int(v) for v in x] for x in entries[0]['Values']] != DOOR_SONG_NATIVE:
+        raise ValueError('Unexpected Door of Time ocarina invalid-condition (already patched?).')
+    bools = {int(e['Hash']) for e in data['Bool']}
+    if any(x[1] not in bools for x in program if x[0] == 0):
+        raise ValueError('Door of Time ocarina condition: flag missing from game data.')
+    entries[0]['Values'] = [[byml_codec.U64(v) for v in step] for step in program]
+    result = byml_codec.dump(document)
+    if not door_song_condition_applied(result, requirement):
+        raise ValueError('Door of Time ocarina condition wrongly rewritten.')
+    return result, {'expression': DOOR_SONG_INVALID, 'requirement': requirement}
+
+
+def door_song_condition_applied(gamedata_raw, requirement='song'):
+    from oot_rando.formats import byml_codec
+    from oot_rando.patching.soul_adapter import murmur3
+    entries = [e for e in byml_codec.load(gamedata_raw)['root']['Data']['BoolExp']
+               if int(e['Hash']) == murmur3(DOOR_SONG_INVALID)]
+    return (len(entries) == 1 and [[int(v) for v in x] for x in entries[0]['Values']]
+            == _door_song_program(requirement))
 
 
 def _scene_programs():

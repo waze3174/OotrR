@@ -112,11 +112,19 @@ OPTIONS = [
            'The Door of Time stands open and the sword can be pulled without the Spiritual Stones or '
            'the Song of Time. Zelda\'s escape still gives the Ocarina of Time and the Song of Time. '
            'To be confirmed in game.', kind='bool', experimental=(True,)),
+    Option('door_of_time_requirement', 'World', 'Door of Time requirements',
+           (('all', 'Ocarina + Song of Time + three stones', OK),
+            ('vanilla', 'Ocarina + Song of Time + Ruby and Sapphire', OK),
+            ('song', 'Ocarina + Song of Time', OK)), 'song',
+           'Play the Song of Time with an ocarina at the door. Three stones also requires the Kokiri '
+           'Emerald, Goron Ruby and Zora Sapphire; Ruby and Sapphire only requires the latter two. '
+           'Door of Time open overrides this requirement. Independent of the stones for Zelda\'s escape. '
+           'To be confirmed in game.', experimental=('all', 'vanilla', 'song')),
     Option('spiritual_stones', 'World', 'Require Spiritual Stones',
            (('all', 'Require all', OK), ('vanilla', 'Vanilla', OK)), 'all',
-           'Which stones Zelda\'s escape asks for, and so the Ocarina of Time, the Song of Time and the '
-           'Master Sword pedestal behind it. Require all: the Kokiri Emerald, the Goron Ruby and the Zora '
-           'Sapphire. Vanilla: the Goron Ruby and the Zora Sapphire only, as in the original game.'),
+           'Which stones Zelda\'s escape asks for to give the Ocarina of Time and the Song of Time. '
+           'Require all: the Kokiri Emerald, the Goron Ruby and the Zora Sapphire. Vanilla: the Goron Ruby '
+           'and the Zora Sapphire only, as in the original game. Door of Time requirements are separate.'),
     Option('zora_fountain', 'World', 'King Zora',
            (('closed', 'Ruto\'s Letter required', OK), ('adult', 'Moved for adult', NO_ADAPTER),
             ('open', 'Always moved', OK)), 'closed',
@@ -346,7 +354,7 @@ OUT_OF_SCOPE = ('Entrance shuffle, Master Quest, multiworld and gossip stone hin
 # Options added after a release, left out of the stored settings at this value: stored settings
 # without the option mean it, and seeds made before the option keep their identity. The builds
 # before spiritual_stones always asked for the Goron Ruby and the Zora Sapphire only.
-UNRECORDED = {'spiritual_stones': 'vanilla'}
+UNRECORDED = {'spiritual_stones': 'vanilla', 'door_of_time_requirement': 'song'}
 
 
 def recorded(values):
