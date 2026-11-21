@@ -30,7 +30,7 @@ save has found:
 The postcard and the console hide while the game is paused, so its menus are clear, and come back when it plays again. The panel
 works while the game is paused too.
 
-Version 0.7.1. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
+Version 0.7.2. 0.2.0's icons were seen in the game; the rest is **not yet tested in the game**, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Controls
 
