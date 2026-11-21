@@ -343,14 +343,10 @@ and tracks as before. Seeds and patches that chose the other value store it in t
 settings, from which the tracker and the apworld rebuild the same logic. The Mask of
 Truth (`has_all_stones`) is not affected.
 
-Seed identity: the builds before the option always asked for the Goron Ruby and the Zora
-Sapphire, so settings that do not hold the option mean `vanilla`
-(`rando_options.UNRECORDED`, `rando_options.restored`): seed settings and manifests read
-back (`Settings.from_dict`: installed seeds, regeneration, imports), seed strings
-(`settings_string`), Archipelago patches (`bridge.settings_from_patch`) and the logic
-settings an earlier tracker kept (`AP_VANILLA_SETTINGS`). `Settings.to_dict` leaves
-`vanilla` out, so those seeds keep their identity; `all` is stored, and the seed string
-writes it although it is the default. New settings start from `defaults()`: Require all.
+Seed identity: an option at the default value is left out of the stored settings
+(`rando_options.UNRECORDED`, `Settings.to_dict`), so seeds made before the option, whose
+settings never held it, keep their identity and regenerate identically; `vanilla` is
+stored. The seed string already writes only the values that differ from the defaults.
 
 ## Mechanism cutscenes are never skippable
 

@@ -383,13 +383,12 @@ def settings_from_patch(patch, skulltulas_always_present=False):
 
     ``skulltulas_always_present`` only changes this game (no placement): a local choice.
     """
-    from oot_rando.logic import rando_options
     from oot_rando.randomizer.randomizer_core import SKIP_OPTIONS, Settings
     from oot_rando.game.randomizer_categories import CATEGORIES
     check_patch(patch)
     seed = f'AP {patch.get("seed_name", "")} {patch.get("slot_name", "")}'.strip()[:256]
     return Settings(seed=seed, randomize_chests=False, open_forest=bool(patch['open_forest']),
-                    categories=dict.fromkeys(CATEGORIES, False), full=rando_options.restored(patch['options']),
+                    categories=dict.fromkeys(CATEGORIES, False), full=dict(patch['options']),
                     archipelago=patch, skulltulas_always_present=bool(skulltulas_always_present),
                     **dict.fromkeys(SKIP_OPTIONS, True)).validate()
 

@@ -352,21 +352,13 @@ OUT_OF_SCOPE = ('Entrance shuffle, Master Quest, multiworld and gossip stone hin
 
 
 # Options added after a release, left out of the stored settings at this value: stored settings
-# without the option mean it, and seeds made before the option keep their identity. The builds
-# before spiritual_stones always asked for the Goron Ruby and the Zora Sapphire only.
-UNRECORDED = {'spiritual_stones': 'vanilla', 'door_of_time_requirement': 'song'}
+# without the option mean it, and seeds made before the option keep their identity.
+UNRECORDED = {'spiritual_stones': 'all', 'door_of_time_requirement': 'song'}
 
 
 def recorded(values):
     """``values`` without the options at their unrecorded value: what a seed stores and hashes."""
     return {name: value for name, value in values.items() if UNRECORDED.get(name) != value}
-
-
-def restored(stored):
-    """Stored settings (``recorded``) with the options they lack at their unrecorded value.
-
-    For settings, seed strings and patches read back; new settings start from ``defaults()``."""
-    return {**UNRECORDED, **stored}
 
 
 def stored_value(values, name):
