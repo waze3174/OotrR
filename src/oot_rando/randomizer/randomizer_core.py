@@ -570,6 +570,10 @@ def generate(nup_path, output, settings, progress=None, save_seed_id=None, saves
             # Scenes no longer required: the Water Temple gate (Serenade), the Door of Time
             # (Zelda's escape) and the rainbow bridge (Zelda's revelation).
             extra_raw[GAMEDATA], story['scene_conditions'] = story_fixes.scene_expressions(extra_raw[GAMEDATA])
+            # The altar rejects the song before the opening flow can run unless
+            # its native invalid-condition is updated too.
+            extra_raw[GAMEDATA], story['door_song_condition'] = story_fixes.door_song_condition(
+                extra_raw[GAMEDATA], rando_options.stored_value(settings.full, 'door_of_time_requirement'))
             for path, key, fix in story_fixes.scene_module_fixes():
                 extra_raw[path], story[key] = fix(extra_raw.get(path) or read(path))
             # Zelda's escape on the stones held, checked at every item get.

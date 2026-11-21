@@ -249,9 +249,8 @@ the dialogue box stayed empty and blocked the game. A new save is required.
 - A source found only in the child maps (`*_Child_*`) or only in the adult maps
   (`*_Adult_*`) is collected at that age: each of its AP locations that this age can
   ever reach must be reachable **at that age** (`Child|`/`Adult|` members, the AP
-  `is_child`/`is_adult` rules). Being adult needs `Time Travel` (Door of Time: Song
-  of Time, which the child gets for the stones Zelda's escape asks for, see
-  *Spiritual Stones for Zelda's escape*). A source with no
+  `is_child`/`is_adult` rules). Being adult needs `Time Travel` (reach the sword
+  through the Door of Time, following *Door of Time requirements* below). A source with no
   such location only receives filler. Its tracker name ends in `(child)`/`(adult)`;
   an object on both maps under one hash is one check for either age.
 - NPCs: exact AP location; for the man on the roof (adult only in the remake) and
@@ -282,13 +281,53 @@ copies at start, adult-only copies once the adult reaches the forest); bean plat
 rupees use `KF Bean Platform Red Rupee`.
 Mido's house: the 4 grouped chests are matched to Mido's 4 AP chests.
 
+### Door of Time requirements (`door_of_time_requirement`)
+
+Play the Song of Time with an ocarina in front of the door. The *Open world* card
+adds a separate choice of stones required at that moment:
+
+| Value | Door requirements |
+|---|---|
+| `song` (default) | Ocarina and Song of Time |
+| `vanilla` | Ocarina, Song of Time, Goron Ruby and Zora Sapphire |
+| `all` | Ocarina, Song of Time and all three Spiritual Stones |
+
+`open_door_of_time` opens the door from the start and overrides this choice. Beyond
+the door, the child can pull the sword without another stone requirement. The setting
+is independent of Zelda's escape below. The solver applies its exit rule in Python,
+preserving the world's fingerprint. Missing stored values mean `song`, and that value
+is omitted from stored settings to preserve earlier seed identities. Behaviour in game
+still needs confirmation.
+
+Before accepting a local seed, generation and replay independently sweep its actual
+placements from the starting inventory with every `Time Travel` grant disabled.
+With a closed door, the child must collect at least one ocarina, the Song of Time,
+and the stones selected above. This includes dependencies: a pickup on a child map
+does not qualify if reaching it requires an item available only as adult. Spare
+ocarinas may remain on adult maps; starting items and sources shared by both ages
+count. An open door skips this check. Archipelago retains its multiworld validation,
+since required items can arrive from other players.
+
+The native altar pack (`Obj_TimeTemple_SpiritStoneBase_A_01`) checks the invalid-condition
+`Market_Child_TimeTempleDoor_OcarinaReacts` before calling the opening event. Its original
+expression rejects the song outside `DoorOfTime` step `Step05`, even after the event flow
+was freed in 0.7.3. The generator now replaces that expression with "door already open OR
+required stones missing"; the native ocarina point still recognises the Song of Time.
+Independent verification checks the emitted expression against the selected requirement.
+
+The child pedestal module also routes the first pull through the inverse of the native
+`AllSage IsAfter Ready` check used for subsequent pulls. Comparing `IsBefore Ready`
+instead left both requests disabled at exactly `Ready`: the prompt appeared but pressing
+the action did nothing. Both requests still require the pedestal action, and exactly one
+can run regardless of the current quest step.
+
 ### Spiritual Stones for Zelda's escape (`spiritual_stones`)
 
 The game's own check (`DoorOfTime/DoorOfTime_CheckStoneNum`) reads only the Fire and
 Water stone quests (`Get_StoneOfFire`, `Get_StoneOfWater`), never the Kokiri Emerald.
 The option, in the *Open world* card, picks what Zelda's escape asks for, and so what
-gates the Ocarina of Time (`HF Ocarina of Time Item`), the Song of Time and the Master
-Sword pedestal:
+gates the Ocarina of Time (`HF Ocarina of Time Item`) and the Song of Time. The door's
+own stone requirement is set separately:
 
 | Value | Stones | Logic and patch |
 |---|---|---|

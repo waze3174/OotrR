@@ -261,6 +261,10 @@ class LogicTests(unittest.TestCase):
                                              bool(expected(state, state.counts, age)),
                                              (value, location, counts, age, door_open))
 
+    def test_bare_logic_settings_are_those_made_before_the_option(self):
+        # The logic settings an earlier seed kept (tracker) do not name the option.
+        self.assertEqual(Logic(self.data).settings['spiritual_stones'], rando_options.UNRECORDED['spiritual_stones'])
+
     def test_escape_waits_for_zelda_and_stones_but_not_the_door(self):
         # Zelda's escape follows Zelda and the three stones (the game checks the stones
         # held); the Song of Time opens the door before it (story_fixes, 21/11).
