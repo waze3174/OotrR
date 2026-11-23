@@ -18,6 +18,7 @@ from oot_rando.randomizer.randomizer_services import (read_artifact, qol_seed_wa
 from oot_rando.randomizer.qol_install import install_qol
 from oot_rando.tracker.auto_tracker import TrackerSession, find_save_slots, newest_save
 from oot_rando.tracker import game_overlay
+from oot_rando.game import check_name_overrides
 from oot_rando.game.check_name_overrides import display_name
 from oot_rando.tracker.check_labels import check_labels
 from oot_rando.tracker import live_memory
@@ -317,6 +318,8 @@ class Application:
         self.nup.trace_add('write', lambda *args: self.write_app_state(game_file=self.nup.get()))
         self.ingame_tracker = tk.BooleanVar(value=self.app_state.get('ingame_tracker', True))
         self.ingame_tracker.trace_add('write', lambda *args: self.write_app_state(ingame_tracker=self.ingame_tracker.get()))
+        self.community_names = tk.BooleanVar(value=self.app_state.get('community_names', True) is not False)
+        check_name_overrides.set_enabled(self.community_names.get())
         self.mods.trace_add('write', lambda *args: self.write_app_state(mods_dir=self.mods.get()))
         self.check_updates = tk.BooleanVar(value=self.app_state.get('check_updates', True) is not False)
         self.check_updates.trace_add('write', lambda *args: self.write_app_state(check_updates=self.check_updates.get()))
@@ -810,6 +813,10 @@ class Application:
         rows.columnconfigure(0, weight=1)
         self.switch_row(rows, 0, 'In-game tracker: R + right stick up shows the items and checks found (GPL-3 module, '
                         'runs only while this seed is enabled)', self.ingame_tracker)
+        self.switch_row(rows, 1, 'Community check names: the names players gave the checks in their spreadsheet',
+                        self.community_names, command=self.community_names_toggled,
+                        tip="Off shows the randomizer's own names. The in-game tracker follows after Update tracker "
+                            'on the seed, or with the next seed.')
         box = self.card(details, 'Share these settings')
         row = self.buttons(box)
         ttk.Button(row, text='Import…', command=self.import_settings).pack(side='left')
@@ -1259,6 +1266,11 @@ class Application:
             self.turbo_status.set(self.turbo.status + ' — last: ' + self.turbo.last_hold)
         self.auto_connect_archipelago()
         self.root.after(1000, self.tracker_tick)   # live memory: ~1 s; the save path is cheap to stat
+
+    def community_names_toggled(self):
+        check_name_overrides.set_enabled(self.community_names.get())
+        self.write_app_state(community_names=self.community_names.get())
+        self.render_tracker()
 
     def refresh_tracker(self):
         if not self.tracker or self.tracker_refreshing:

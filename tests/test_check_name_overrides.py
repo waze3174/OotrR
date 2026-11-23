@@ -190,6 +190,18 @@ class Applied(unittest.TestCase):
         self.assertEqual(labels['ap#HF Open Grotto Chest'], 'HF Open Grotto Chest')   # unknown name: unchanged
         self.assertEqual(labels['KokiriForest#chest#9'], 'Chest 2')                    # numbered, not renamed
 
+    def test_turned_off_the_catalogue_names_show_again(self):
+        with mock.patch.object(overrides, 'load_overrides', return_value=self.TABLE), \
+                mock.patch.dict('os.environ', {}, clear=False):
+            overrides.set_enabled(False)
+            self.assertFalse(overrides.enabled())
+            labels = check_labels(self.CHECKS)
+            self.assertEqual(labels['KokiriForest#pots#1'], 'KF_pot_2 (child)')
+            self.assertEqual(labels['ap#KF Kokiri Sword Chest'], 'KF Kokiri Sword Chest')
+            overrides.set_enabled(True)
+            self.assertTrue(overrides.enabled())
+            self.assertEqual(check_labels(self.CHECKS)['ap#KF Kokiri Sword Chest'], 'Sword Chest')
+
     def test_the_catalogue_is_not_modified(self):
         before = json.dumps(self.CHECKS)
         with mock.patch.object(overrides, 'load_overrides', return_value=self.TABLE):

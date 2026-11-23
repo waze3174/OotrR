@@ -7,14 +7,19 @@ changes: a check's id, its catalogue entry and its Archipelago location stay as 
 a seed made before the renaming shows the new names too.
 
 Rebuild the file from the spreadsheet with ``tools/check_name_overrides_from_xlsx.py``.
+
+The names can be turned off (:func:`set_enabled`): the catalogue's own names show again. The
+choice lives in the environment, so generation workers, which inherit it, follow it too.
 """
 import functools
 import json
+import os
 import re
 
 from oot_rando.paths import resource
 
 OVERRIDES_RESOURCE = ('game', 'check_name_overrides.json')
+ENVIRONMENT = 'OOT_RANDO_CHECK_NAMES'   # 'original': show the catalogue's names
 
 
 def normalize(name):
@@ -45,6 +50,19 @@ def load_overrides():
     return Overrides(json.loads(path.read_text(encoding='utf-8'))['names'])
 
 
+def enabled():
+    """Whether the community names are shown."""
+    return os.environ.get(ENVIRONMENT, '') != 'original'
+
+
+def set_enabled(on):
+    """Show the community names, or the catalogue's own names when ``on`` is false."""
+    if on:
+        os.environ.pop(ENVIRONMENT, None)
+    else:
+        os.environ[ENVIRONMENT] = 'original'
+
+
 def display_name(name):
     """The name the trackers and the spoiler show for a check called ``name`` in the catalogue."""
-    return load_overrides().display(name)
+    return load_overrides().display(name) if enabled() else name
